@@ -7,7 +7,7 @@
 - Arduino IDE 2.3.10
 - AmebaPro2 core 4.0.15-Release
 - 開發板：`HUB-8735_ultra`
-- 目前偵測到的序列埠：`COM4`
+- 目前偵測到的序列埠：`COM5`
 
 ## 資料夾
 
