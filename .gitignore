@@ -1,1 +1,4 @@
 .build/
+
+learning/10_air_quality_oled/secrets.h
+learning/12_air_quality_thingspeak/secrets.h
