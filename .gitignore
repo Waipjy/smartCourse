@@ -2,3 +2,5 @@
 
 learning/10_air_quality_oled/secrets.h
 learning/12_air_quality_thingspeak/secrets.h
+learning/00-3_camera_web_stream/secrets.h
+learning/13_mqtt_dht11_oled/secrets.h

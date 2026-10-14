@@ -42,6 +42,7 @@
 | IO0 / IO1 | 相機內建 I2C1（有相機時保留） | `03-2_camera_oled` |
 | IO3 / IO4 | OLED 軟體 I2C（SDA/SCL） | `03_oled_hello_u8g2`、`04_light_sensor_oled`、`03-2_camera_oled`、`05~10`、`12` 全系列 |
 | IO2 | 光敏電阻（`A0`） | `04_light_sensor_oled` |
+| IO0 | 光敏電阻（`A2`，沒用相機時才可用） | `04_light_sensor_oled`、`13_mqtt_dht11_oled` |
 | IO12 | FUNC 按鈕（開機高電位，按下接地變低電位） | `00-2_func_runner_game`、`10_air_quality_oled`、`12`（手動換頁） |
 | IO19 | 蜂鳴器訊號腳（需要 PWM） | `08_buzzer_beep`、`09_dht11_oled_led_alarm`、`10_air_quality_oled`、`12` |
 | IO20 | DHT11 溫濕度感測器 Data 腳（單線通訊，自己刻 bit-bang） | `05`、`06`、`07`、`09`、`10`、`12` |
@@ -67,6 +68,7 @@
 - **09_dht11_oled_led_alarm**：07 + 08 合體，紅/黃燈亮起時蜂鳴器循環播警笛聲，正常時靜音。
 - **10_air_quality_oled**：內建 WiFi + HTTPS 抓環境部 `AQX_P_432`（桃園市中壢站），OLED 五頁輪播（AQI 表情+色階量表 / PM2.5·PM10·O3·NO2 卡片 / 風速風向羅盤 / 室內溫濕度卡片 / 溫濕度趨勢圖），標題列有 WiFi 訊號格，每分鐘更新資料、10 秒自動換頁、FUNC 鍵手動換頁。WiFi 帳密與 API key 放 `secrets.h`（已 gitignore），第一次請複製 `secrets.h.example`。整合 09 的 LED（IO22~24）+ 蜂鳴器（IO19）室內溫濕度警報（警笛非阻塞、標題列閃爍警告三角形），另接 DHT11（IO20）與 FUNC 鍵（IO12），OLED 用 IO3/IO4。
 - **12_air_quality_thingspeak**：10 的分支，額外每 15 秒把室內溫度、濕度、AQI、PM2.5 上傳到 ThingSpeak（field1~4）做長期追蹤。金鑰放 `secrets.h`（已 gitignore，範例見 `secrets.h.example`）。
+- **13_mqtt_dht11_oled**：DHT11 溫濕度 + 光敏電阻（IO0/A2，處理方式同 04）每 30 秒用 MQTT 發佈到 `mqttgo.io:1883`、topic `kai0124/class105/data`，payload `{"temp": 25, "humi": 60, "light": 75}`。OLED 顯示 WiFi/MQTT 連線進度與儀表板（溫濕度卡片與光線頁每 5 秒輪播）。clientId 為隨機亂數。WiFi 帳密放 `secrets.h`（已 gitignore）。
 
 ## 文件/溝通慣例
 
