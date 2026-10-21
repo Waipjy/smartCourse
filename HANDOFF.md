@@ -46,6 +46,7 @@
 | IO12 | FUNC 按鈕（開機高電位，按下接地變低電位） | `00-2_func_runner_game`、`10_air_quality_oled`、`12`（手動換頁） |
 | IO19 | 蜂鳴器訊號腳（需要 PWM） | `08_buzzer_beep`、`09_dht11_oled_led_alarm`、`10_air_quality_oled`、`12` |
 | IO20 | DHT11 溫濕度感測器 Data 腳（單線通訊，自己刻 bit-bang） | `05`、`06`、`07`、`09`、`10`、`12` |
+| IO21 | 伺服馬達訊號線（PWM） | `16_servo_func`、`17_face_servo` |
 | IO22 / IO23 / IO24 | 外接 LED（紅/黃/綠） | `02_traffic_light`、`04_light_sensor_oled`、`07`、`09`、`10`、`12` |
 | IO25 / IO26 | 板載藍/綠 LED（`LED_G`/`LED_B`） | `01_led_pattern` |
 
@@ -69,6 +70,22 @@
 - **10_air_quality_oled**：內建 WiFi + HTTPS 抓環境部 `AQX_P_432`（桃園市中壢站），OLED 五頁輪播（AQI 表情+色階量表 / PM2.5·PM10·O3·NO2 卡片 / 風速風向羅盤 / 室內溫濕度卡片 / 溫濕度趨勢圖），標題列有 WiFi 訊號格，每分鐘更新資料、10 秒自動換頁、FUNC 鍵手動換頁。WiFi 帳密與 API key 放 `secrets.h`（已 gitignore），第一次請複製 `secrets.h.example`。整合 09 的 LED（IO22~24）+ 蜂鳴器（IO19）室內溫濕度警報（警笛非阻塞、標題列閃爍警告三角形），另接 DHT11（IO20）與 FUNC 鍵（IO12），OLED 用 IO3/IO4。
 - **12_air_quality_thingspeak**：10 的分支，額外每 15 秒把室內溫度、濕度、AQI、PM2.5 上傳到 ThingSpeak（field1~4）做長期追蹤。金鑰放 `secrets.h`（已 gitignore，範例見 `secrets.h.example`）。
 - **13_mqtt_dht11_oled**：DHT11 溫濕度 + 光敏電阻（IO0/A2，處理方式同 04）每 30 秒用 MQTT 發佈到 `mqttgo.io:1883`、topic `kai0124/class105/data`，payload `{"temp": 25, "humi": 60, "light": 75}`。OLED 顯示 WiFi/MQTT 連線進度與儀表板（溫濕度卡片與光線頁每 5 秒輪播）。clientId 為隨機亂數。WiFi 帳密放 `secrets.h`（已 gitignore）。
+- **14_camera_rtsp**：HD 1280x720 H.264 + AAC 聲音的 RTSP 串流，IP 顯示在 OLED。
+- **15_face_detection_rtsp**：人臉偵測 + 識別（SCRFD + MobileFaceNet），陌生人自動登記成 P01、P02…，可在網頁登記／改名／刪除／備份；畫面用 JPEG 快照（`/snap`）輪流要，人臉框由網頁疊上去。最多登記 20 人。
+- **15-1_hand_filter**：拇指尖＋食指尖拉出取景框、框內即時套 13 種濾鏡，捏合換濾鏡、停住自動拍照、彩繪模式。手部關鍵點用自己改寫的 `HandTracker`（核心的 NNGestureDetection 拿不到座標）。
+- **16_servo_func**：FUNC 鍵讓 IO21 的伺服馬達 0→90→180→0 循環（`AmebaServo`）。
+- **17_face_servo**：15 + 16，認識的人轉 70°、陌生人轉 -20°（脈寬下限放寬到 340µs）。
+- **15-2_finger_runner**（暫停、未編譯）：兩指跑酷，只有 `HandTracker` 與遊戲網頁，沒有主程式。
+
+## 這片板子 / SDK 的額外踩坑（網頁與影像相關）
+
+- **核心的 `snprintf` 遇到含中文的 `%s`，回傳長度會少算**：不要用回傳值累加位置，改用 `strlen()` 重新量（15 的狀態 JSON 因此壞掉，網頁一直顯示離線）。
+- **`WiFiClient` 的解構函式會關掉 socket，複製出來的物件共用同一個 socket**：要把連線留下來時，先複製、再把原物件 `setNonBlockingMode()`；不要 `stop()` 已被瀏覽器關掉的舊連線（編號可能已被新連線重複使用）。
+- **連續 MJPEG（multipart/x-mixed-replace）在瀏覽器只顯示第一張**：改成網頁一張一張向 `/snap` 要快照。`Camera.getImage()` 在 snapshot 模式每次都會拍新的，並等畫面送達才返回。
+- **HTTP 回應一定要帶 `Content-Length`**，否則收到一半的 JSON 會被當成壞掉。
+- **這個 SDK 只有 HTTPS 用戶端，沒有 HTTPS 伺服器**，區網內用 HTTP。
+- **NN 標頭會取消 Arduino 的 `min()`/`max()` 巨集**，同一個檔案裡不要用，改寫判斷式。
+- **IO0/IO1 是板載相機的 I2C1**，有用相機的 sketch 不要在這兩根接東西。
 
 ## 文件/溝通慣例
 
