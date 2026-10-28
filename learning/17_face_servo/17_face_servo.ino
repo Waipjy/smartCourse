@@ -22,8 +22,8 @@
   其余功能同 15：
     - 相机 VGA 640x480 JPEG，网页一张接一张向 /snap 要快照当作影像；
     - 板载 NPU 人脸侦测（SCRFD）+ 识别（MobileFaceNet），人脸框与代号由网页叠在画面上；
-    - 自动记住陌生人（单独出现超过 2 秒 -> P01、P02...，备份到快闪记忆体）；
-      注意：登记完成后这个人就变成「认识的人」，伺服马达会从 -20 度转到 70 度；
+    - 已取消「自动记住陌生人」：只有按 FUNC 键或在网页按「登记」才会登记（登记后这个人就变成
+      「认识的人」，伺服马达从 -20 度转到 70 度）；登记 / 改名 / 删除后自动备份；
     - 网页控制台 http://<板子 IP>/ ：登记 / 改名 / 删除 / 备份 / 还原 / 严格度 / 伺服马达测试；
     - FUNC 键（IO12）= 登记画面中的人脸；OLED 显示 IP、人脸数、代号、伺服马达角度。
 
@@ -61,8 +61,6 @@ const uint32_t MAX_VIDEO_FPS = 10;  // 网页画面最高张数 / 秒（用来�
 
 const uint8_t MAX_REG = 20;          // SDK 上限（MAX_FRC_REG_NUM）
 const uint8_t NAME_LEN = 16;
-const uint32_t UNKNOWN_HOLD_MS = 2000;     // 陌生人持续出现多久才自动登记
-const uint32_t ENROLL_COOLDOWN_MS = 8000;  // 两次自动登记的最短间隔
 const uint32_t PENDING_TIMEOUT_MS = 4000;  // 登记后多久没被认出来就放弃等待
 const uint32_t BACKUP_DELAY_MS = 1500;
 
@@ -108,9 +106,6 @@ volatile uint32_t faceSeq = 0;      // 每处理一帧 +1，SSE 靠它判断有�
 char faceNames[4][NAME_LEN];        // 画面里前 4 张脸的识别结果（"unknown" 表示陌生人）
 int16_t faceBox[4][4];              // 座标 0~1000（千分比）：x0, y0, x1, y1
 volatile uint32_t lastFaceMs = 0;   // 最近一次看到人脸的时间
-volatile uint32_t unknownSinceMs = 0;  // 单一陌生人开始持续出现的时间，0 = 没有
-volatile bool enrollRequest = false;   // 回呼函式要求主迴圈自动登记
-volatile uint32_t lastEnrollMs = 0;
 
 // ---- 登记流程 ----
 char pendingFallback[NAME_LEN] = "";  // 改名失败时要还原回去的旧名字
@@ -120,7 +115,6 @@ bool backupDue = false;
 uint32_t backupDueMs = 0;
 
 // ---- 设定 ----
-bool autoEnroll = true;
 int threshold = -1;  // -1 = 没调整过，用 SDK 预设
 char lastMsg[64] = "就绪";
 
@@ -297,7 +291,6 @@ bool enrollCurrentFace(const char *requested) {
   facerecog.registerFace(name);
   snprintf(pendingName, sizeof(pendingName), "%s", name);
   pendingSinceMs = millis();
-  lastEnrollMs = millis();
   Serial.print("[FACE] 送出登记：");
   Serial.println(name);
   setMsg("已送出登記，辨識中…");
@@ -339,7 +332,6 @@ void renameFace(const char *oldName, const char *newName) {
   snprintf(pendingName, sizeof(pendingName), "%s", newName);
   snprintf(pendingFallback, sizeof(pendingFallback), "%s", oldName);
   pendingSinceMs = millis();
-  lastEnrollMs = millis();
   Serial.print("[FACE] 改名：");
   Serial.print(oldName);
   Serial.print(" -> ");
@@ -390,18 +382,6 @@ void faceCallback(std::vector<FaceRecognitionResult> results) {
   faceCount = count;
   if (count > 0) lastFaceMs = millis();
   faceSeq = faceSeq + 1;
-
-  // 只有「刚好 1 张脸、而且是陌生人」才开始计时；持续够久就要求自动登记
-  if (count == 1 && unknownCount == 1) {
-    if (unknownSinceMs == 0) unknownSinceMs = millis();
-    if (autoEnroll && regCount < MAX_REG && pendingName[0] == 0 &&
-        millis() - unknownSinceMs >= UNKNOWN_HOLD_MS &&
-        millis() - lastEnrollMs >= ENROLL_COOLDOWN_MS) {
-      enrollRequest = true;
-    }
-  } else {
-    unknownSinceMs = 0;
-  }
 }
 
 // ---------------------------------------------------------------- 网页
@@ -444,7 +424,6 @@ label{display:block;margin:6px 0}input[type=range]{vertical-align:middle;width:5
 <div><div id="svT" class="muted"></div><button id="svK" class="ghost">測試：認識的人</button><button id="svS" class="ghost">測試：陌生人</button></div></div>
 <div class="muted">認識的人轉到 70°，陌生人轉到 -20°；狀態穩定 0.3 秒才會轉。</div></section>
 <section class="card"><h2>設定</h2>
-<label><input type="checkbox" id="auto"> 自動登記陌生人（單獨出現超過 2 秒）</label>
 <label>辨識嚴格度　<input type="range" id="thr" min="0" max="100" value="50"> <span id="tv">預設</span>
 <button id="ta" class="ghost">套用</button></label>
 <div class="muted">數值越高越嚴格（較不容易認錯人，但也較容易認不出來）。</div></section>
@@ -480,14 +459,12 @@ $('rc').textContent=j.reg.length;
 const live=j.faces.filter(f=>f.k).map(f=>f.n);
 $('regs').innerHTML=j.reg.map(n=>'<span class="chip'+(live.includes(n)?' live':'')+'">'+n+'<button class="ed" data-r="'+n+'" title="改名">✎</button><button data-d="'+n+'" title="刪除">×</button></span>').join('');
 $('regtip').textContent=j.reg.length?'點 ✎ 可改名：該人要單獨正對鏡頭、保持不動，約 1~2 秒完成。':'還沒有登記的人。重開機還原後，名單要等每個人再被辨識到一次才會出現在這裡。';
-$('auto').checked=j.auto;
 $('svA').textContent=j.servo+'°';$('svT').textContent='目標 '+j.stgt+'°';
 if(j.thr>=0&&document.activeElement!==$('thr')){$('thr').value=j.thr;$('tv').textContent=j.thr}}
 $('reg').onclick=()=>cmd('c=reg&name='+encodeURIComponent($('nm').value.trim()));
 $('regs').onclick=e=>{const d=e.target.dataset.d,r=e.target.dataset.r;
  if(d){if(confirm('刪除 '+d+'？'))cmd('c=del&name='+encodeURIComponent(d))}
  else if(r){const to=prompt('把 '+r+' 改名為（英數字、- _，最長 12 字）。請先讓這個人單獨正對鏡頭並保持不動。');if(to&&to.trim())cmd('c=ren&name='+encodeURIComponent(r)+'&to='+encodeURIComponent(to.trim()))}};
-$('auto').onchange=()=>cmd('c=auto&v='+($('auto').checked?1:0));
 $('thr').oninput=()=>$('tv').textContent=$('thr').value;
 $('ta').onclick=()=>cmd('c=thr&v='+$('thr').value);
 $('svK').onclick=()=>cmd('c=sv&v=1');$('svS').onclick=()=>cmd('c=sv&v=0');
@@ -540,8 +517,8 @@ void sendStatus(WiFiClient &c) {
   json[0] = 0;
 
   appendf(json, sizeof(json),
-          "{\"url\":\"http://%u.%u.%u.%u/\",\"res\":\"%ux%u\",\"fps\":%d,\"nn\":%d,\"auto\":%s,\"thr\":%d,\"servo\":%d,\"stgt\":%d,\"msg\":\"%s\",\"faces\":[",
-          ip[0], ip[1], ip[2], ip[3], configV.width(), configV.height(), CAM_FPS, NN_FPS, autoEnroll ? "true" : "false",
+          "{\"url\":\"http://%u.%u.%u.%u/\",\"res\":\"%ux%u\",\"fps\":%d,\"nn\":%d,\"thr\":%d,\"servo\":%d,\"stgt\":%d,\"msg\":\"%s\",\"faces\":[",
+          ip[0], ip[1], ip[2], ip[3], configV.width(), configV.height(), CAM_FPS, NN_FPS,
           threshold, servoAngle, servoTarget, lastMsg);
 
   const uint8_t shown = faceCount > 4 ? 4 : faceCount;
@@ -602,10 +579,6 @@ void handleCommand(WiFiClient &c, const char *query) {
   } else if (strcmp(cmd, "restore") == 0) {
     facerecog.restoreRegisteredFace();
     setMsg("已從板子還原（名單等被辨識到才會顯示）");
-  } else if (strcmp(cmd, "auto") == 0) {
-    autoEnroll = atoi(value) != 0;
-    unknownSinceMs = 0;
-    setMsg(autoEnroll ? "已開啟自動登記" : "已關閉自動登記");
   } else if (strcmp(cmd, "thr") == 0) {
     threshold = constrain(atoi(value), 0, 100);
     facerecog.setThreshold(threshold);
@@ -1045,12 +1018,6 @@ void loop() {
     enrollCurrentFace("");
   }
 
-  // 回呼函式要求的自动登记
-  if (enrollRequest) {
-    enrollRequest = false;
-    if (autoEnroll) enrollCurrentFace("");
-  }
-
   // 登记后一直没被认出来（脸移开了、或认不出来），不要永远卡在「处理中」
   if (pendingName[0] != 0 && millis() - pendingSinceMs > PENDING_TIMEOUT_MS) {
     Serial.print("[FACE] 登记逾时：");
@@ -1078,7 +1045,6 @@ void loop() {
   // 超过 1.5 秒没再看到人脸，把数字归零（万一 NN 暂停，OLED 不会停在旧的人脸数上）
   if (faceCount > 0 && millis() - lastFaceMs > 1500) {
     faceCount = 0;
-    unknownSinceMs = 0;
   }
 
   static uint32_t lastDrawMs = 0;

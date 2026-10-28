@@ -8,3 +8,6 @@ learning/14_camera_rtsp/secrets.h
 learning/15_face_detection_rtsp/secrets.h
 learning/15-1_hand_filter/secrets.h
 learning/17_face_servo/secrets.h
+learning/15-2_finger_runner/secrets.h
+learning/18_yolo_detection/secrets.h
+learning/19_yolo_fun/secrets.h
