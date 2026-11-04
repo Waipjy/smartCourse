@@ -69,7 +69,11 @@ button:hover{border-color:#38bdf8}
 .cam{padding:0;overflow:hidden;cursor:pointer;transition:transform .2s,border-color .2s}
 .cam:hover{transform:translateY(-3px);border-color:rgba(56,189,248,.5)}
 .vid{position:relative;aspect-ratio:16/9;background:#05080f}
-.vid video,.vid img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.vid video,.vid img,.vid canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.vid video{opacity:0;pointer-events:none}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:4px 14px;border:1px solid var(--line);border-radius:999px;font-size:13.5px;background:rgba(255,255,255,.04)}
+.chip b{color:#7dd3fc;font-variant-numeric:tabular-nums}
 .live{position:absolute;left:10px;top:10px;display:flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;background:rgba(0,0,0,.6);font-size:11.5px;letter-spacing:1px}
 .live:before{content:"";width:7px;height:7px;border-radius:50%;background:#ef4444;animation:blink 1.2s infinite}
 .live.off:before{background:#777;animation:none}
@@ -107,13 +111,14 @@ footer a{color:#7dd3fc}
     </div>
   </section>
 
-  <div class="sec" id="cams"><h2>中壢即時路況</h2><span>桃園市政府交通局監視器 · 點一下放大</span></div>
+  <div class="sec" id="cams"><h2>中壢即時路況 · AI 車流辨識</h2><span>每 10 秒辨識一張 · 點一下看即時影像</span></div>
+  <div class="chips" id="sum"><span class="chip">等待辨識…</span></div>
   <div class="cams" id="camgrid"></div>
 </main>
 
 <footer>
   影像來源：<a href="https://tw.live" target="_blank" rel="noopener">tw.live</a> 整理之桃園市政府交通局即時影像（cctvtraffic.tycg.gov.tw），僅供個人學習與展示；
-  版權屬原機關所有。影像載入失敗時會改顯示最後一張快照。
+  版權屬原機關所有。車輛辨識使用 TensorFlow.js 的 COCO-SSD（lite_mobilenet_v2，Apache-2.0）在瀏覽器內執行；串流無法連線時只顯示 tw.live 快照、不辨識。
 </footer>
 
 <div class="big" id="big"><div class="box"><h4><span id="bigT"></span><button id="bigX">關閉 ✕</button></h4><video id="bigV" controls autoplay muted playsinline></video></div></div>
@@ -121,6 +126,8 @@ footer a{color:#7dd3fc}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
 <script>
 const BROKER='wss://mqttgo.io:8084/mqtt';
 const TOPIC='eric1030/class305/data';
@@ -208,10 +215,21 @@ function pushData(o){
   hist.labels.push(lab);SERIES.forEach(s=>hist[s.key].push(+vals[s.key].toFixed(s.dec)));
   if(hist.labels.length>MAXPTS){hist.labels.shift();SERIES.forEach(s=>hist[s.key].shift())}
   chart.update();
+  try{localStorage.setItem('dash_hist',JSON.stringify(hist))}catch(e){}
   count++;$('cnt').textContent=count;$('npts').textContent=hist.labels.length;$('last').textContent=lab;
   return true;
 }
-$('clr').onclick=()=>{hist.labels.length=0;SERIES.forEach(s=>hist[s.key].length=0);chart.update();$('npts').textContent=0};
+$('clr').onclick=()=>{hist.labels.length=0;SERIES.forEach(s=>hist[s.key].length=0);chart.update();$('npts').textContent=0;try{localStorage.removeItem('dash_hist')}catch(e){}};
+// 還原這個瀏覽器上次收到的資料（broker 不留歷史，所以只能靠瀏覽器自己存）
+try{
+  const old=JSON.parse(localStorage.getItem('dash_hist')||'null');
+  if(old&&old.labels&&old.labels.length){
+    hist.labels.push(...old.labels);SERIES.forEach(s=>hist[s.key].push(...(old[s.key]||[])));
+    const i=hist.labels.length-1;
+    SERIES.forEach(s=>setGauge(s,hist[s.key][i]));
+    $('npts').textContent=hist.labels.length;$('last').textContent=hist.labels[i]+'（上次）';chart.update();
+  }
+}catch(e){}
 
 // ---------- MQTT（WebSocket）----------
 function status(cls,txt){$('dot').className='dot '+cls;$('st').textContent=txt}
@@ -231,8 +249,8 @@ if(new URLSearchParams(location.search).has('demo')){
   c.on('message',(t,m)=>{try{if(pushData(JSON.parse(m.toString())))status('on','已連線 · 接收中')}catch(e){console.warn('payload 解析失敗',m.toString())}});
 }
 
-// ---------- 中壢即時路況（HLS）----------
-// id 是 tw.live 的攝影機編號（也用來取最後快照 https://assets.tw.live/images/taoyuan/<id>.jpg）
+// ---------- 中壢即時路況（HLS）+ AI 車流辨識 ----------
+// id 是 tw.live 的攝影機編號（也用來取快照 https://assets.tw.live/images/taoyuan/<id>.jpg）
 const CAMS=[
   {id:'T207540',name:'中山東路・中北路口',  src:'https://cctvtraffic.tycg.gov.tw/hls/nvr2/camera074/live.m3u8'},
   {id:'T202450',name:'延平路・中美路',      src:'https://cctvtraffic.tycg.gov.tw/hls/nvr5/camera269/live.m3u8'},
@@ -241,7 +259,27 @@ const CAMS=[
   {id:'T207670',name:'中山東路・幸福路',    src:'https://cctvtraffic.tycg.gov.tw/hls/nvr4/camera192/live.m3u8'},
   {id:'T203170',name:'龍岡路一段・中北路',  src:'https://cctvtraffic.tycg.gov.tw/hls/nvr6/camera319/live.m3u8'},
 ];
+// 要框的類別（COCO-SSD 的類別名稱）
+const VEH={car:{n:'汽車',c:'#38bdf8',e:'🚗'},motorcycle:{n:'機車',c:'#fbbf24',e:'🏍️'},bus:{n:'公車',c:'#4ade80',e:'🚌'},truck:{n:'卡車',c:'#f87171',e:'🚚'},person:{n:'行人',c:'#c084fc',e:'🚶'}};
+const CONF=0.3,INTERVAL=10000;
+
+// ---- COCO-SSD（TensorFlow.js，在瀏覽器裡跑；WebGL 加速，模型約 18 MB 從 Google 儲存空間載入）----
+// 選 COCO-SSD 而不是 YOLO：不用轉檔、瀏覽器直接能跑；用 lite_mobilenet_v2（約 18 MB）載入快，準度略低，路口很遠的小車可能漏掉。
+let model=null,modelP=null;
+function loadModel(){
+  if(!modelP)modelP=cocoSsd.load({base:'lite_mobilenet_v2'}).then(m=>{model=m;return m});
+  return modelP;
+}
+// 回傳 [{k:類別,s:信心,x,y,w,h}]，座標是原圖像素
+async function detect(src){
+  await loadModel();
+  const r=await model.detect(src,40,CONF);
+  return r.filter(p=>VEH[p.class]).map(p=>({k:p.class,s:p.score,x:p.bbox[0],y:p.bbox[1],w:p.bbox[2],h:p.bbox[3]}));
+}
+
+// ---- HLS ----
 function attach(video,src,onState){
+  video.crossOrigin='anonymous';  // 之後要把影格畫到 canvas 才讀得到像素
   if(window.Hls&&Hls.isSupported()){
     // 市府伺服器有時很慢（一個片段可能要十幾秒），所以逾時放寬、失敗多重試幾次
     const slow={default:{maxTimeToFirstByteMs:30000,maxLoadTimeMs:60000,timeoutRetry:{maxNumRetry:3,retryDelayMs:0,maxRetryDelayMs:0},errorRetry:{maxNumRetry:4,retryDelayMs:1000,maxRetryDelayMs:8000}}};
@@ -260,27 +298,58 @@ function attach(video,src,onState){
   if(video.canPlayType('application/vnd.apple.mpegurl')){video.src=src;video.play().catch(()=>{});onState&&onState(true);return ()=>{video.removeAttribute('src');video.load()}}
   onState&&onState(false);return ()=>{};
 }
-CAMS.forEach(c=>{
+
+// ---- 卡片：每 10 秒抓一張影格 -> YOLO -> 畫框 + 統計 ----
+const totals={};  // id -> {類別:數量}
+function drawResult(cv,src,w,h,dets){
+  cv.width=w;cv.height=h;const g=cv.getContext('2d');g.drawImage(src,0,0,w,h);
+  const lw=Math.max(2,w/320),fs=Math.max(13,w/42);g.lineWidth=lw;g.font='bold '+fs+'px "Microsoft JhengHei",sans-serif';g.textBaseline='top';
+  for(const b of dets){
+    const v=VEH[b.k];g.strokeStyle=v.c;g.strokeRect(b.x,b.y,b.w,b.h);
+    const t=v.n+' '+Math.round(b.s*100),tw=g.measureText(t).width+8,ty=b.y>fs+4?b.y-fs-4:b.y;
+    g.fillStyle=v.c;g.fillRect(b.x,ty,tw,fs+4);g.fillStyle='#000';g.fillText(t,b.x+4,ty+2);
+  }
+}
+function summarize(){
+  const sum={};Object.values(totals).forEach(t=>Object.keys(t).forEach(k=>sum[k]=(sum[k]||0)+t[k]));
+  $('sum').innerHTML=Object.keys(VEH).map(k=>`<span class="chip" style="border-color:${VEH[k].c}">${VEH[k].e} ${VEH[k].n} <b>${sum[k]||0}</b></span>`).join('')+
+    `<span class="chip">共 <b>${Object.values(sum).reduce((a,b)=>a+b,0)}</b> 個 · ${Object.keys(totals).length}/${CAMS.length} 路口</span>`;
+}
+let queue=Promise.resolve();
+CAMS.forEach((c,idx)=>{
   const el=document.createElement('div');el.className='card cam';
-  el.innerHTML=`<div class="vid"><img alt="" src="https://assets.tw.live/images/taoyuan/${c.id}.jpg"><video muted playsinline></video><span class="live off">連線中</span></div>
-  <div class="cap"><b>${c.name}</b><span>${c.id}</span></div>`;
+  el.innerHTML=`<div class="vid"><img alt="" src="https://assets.tw.live/images/taoyuan/${c.id}.jpg"><canvas></canvas><video muted playsinline></video><span class="live off">連線中</span></div>
+  <div class="cap"><b>${c.name}</b><span class="cnt">等待辨識…</span></div>`;
   $('camgrid').appendChild(el);
-  const v=el.querySelector('video'),tag=el.querySelector('.live'),img=el.querySelector('img');
-  v.style.display='none';
-  let stop=null;
-  const state=ok=>{tag.className='live'+(ok?'':' off');tag.textContent=ok?'LIVE':'快照';v.style.display=ok?'block':'none';img.style.display=ok?'none':'block'};
-  // 串流還沒好或斷線時，顯示 tw.live 的快照（每 60 秒重抓一次，tw.live 約每 5 分鐘更新）
-  setInterval(()=>{if(img.style.display!=='none')img.src='https://assets.tw.live/images/taoyuan/'+c.id+'.jpg?t='+Date.now()},60000);
-  // 進入畫面才開始載入，離開就停掉，省頻寬
+  const v=el.querySelector('video'),tag=el.querySelector('.live'),img=el.querySelector('img'),cv=el.querySelector('canvas'),cnt=el.querySelector('.cnt');
+  cv.style.display='none';
+  let stop=null,timer=null,streamOk=false,seen=false;
+  const state=ok=>{streamOk=ok;if(!seen){tag.className='live off';tag.textContent=ok?'等待辨識':'快照'}};
+  async function run(){
+    if(!streamOk||v.readyState<2||!v.videoWidth)return;
+    try{
+      const w=v.videoWidth,h=v.videoHeight,dets=await detect(v);
+      drawResult(cv,v,w,h,dets);cv.style.display='block';img.style.display='none';
+      const t={};dets.forEach(b=>t[b.k]=(t[b.k]||0)+1);totals[c.id]=t;seen=true;
+      tag.className='live';tag.textContent='AI · '+new Date().toTimeString().slice(0,8);
+      cnt.innerHTML=Object.keys(VEH).filter(k=>t[k]).map(k=>VEH[k].e+' '+t[k]).join('　')||'沒有車輛';
+      summarize();
+    }catch(e){console.warn('辨識失敗',e);cnt.textContent='辨識失敗'}
+  }
+  const start=()=>{
+    stop=attach(v,c.src,state);
+    setTimeout(()=>{timer=setInterval(()=>{queue=queue.then(run)},INTERVAL);queue=queue.then(run)},idx*1200);
+  };
+  // 進入畫面才開始載入串流與辨識，離開就停掉，省頻寬
   new IntersectionObserver(es=>es.forEach(e=>{
-    if(e.isIntersecting&&!stop)stop=attach(v,c.src,state);
-    else if(!e.isIntersecting&&stop){stop();stop=null;v.pause()}
+    if(e.isIntersecting&&!stop){start();loadModel().catch(err=>{console.warn(err);cnt.textContent='模型載入失敗'})}
+    else if(!e.isIntersecting&&stop){stop();stop=null;clearInterval(timer);v.pause();streamOk=false}
   }),{threshold:.2}).observe(el);
   el.onclick=()=>openBig(c);
 });
 let bigStop=null;
 function openBig(c){
-  $('bigT').textContent=c.name+'（'+c.id+'）';$('big').classList.add('on');
+  $('bigT').textContent=c.name+'（'+c.id+'）· 即時';$('big').classList.add('on');
   bigStop=attach($('bigV'),c.src);
 }
 function closeBig(){$('big').classList.remove('on');if(bigStop){bigStop();bigStop=null}$('bigV').pause()}
