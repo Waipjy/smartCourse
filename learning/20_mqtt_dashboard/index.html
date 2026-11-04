@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>智慧節能 即時儀表板</title>
+<!--
+  HUB-8735 智慧節能儀表板（純靜態網頁，可直接部署到 Vercel）
+  1. 感測資料：瀏覽器用 MQTT over WebSocket 連 wss://mqttgo.io:8084/mqtt，訂閱 kai0124/class105/data，
+     payload：{"temp": 25, "humi": 60, "light": 75}（13_mqtt_dht11_oled 發布）。
+     第 4 個 Gauge「體感溫度」是用溫度＋濕度算出來的（澳洲氣象局 apparent temperature）。
+  2. 中壢即時路況影像：桃園市政府交通局的 HLS 串流（https://cctvtraffic.tycg.gov.tw/hls/...，
+     影像清單整理自 tw.live）。串流有開放跨來源存取（CORS *），所以可以直接在自己的網頁用 hls.js 播放。
+     想換攝影機：改下面的 CAMS 陣列。tw.live 的 /cam/?id=XXXX 頁面可查到各 ID 的 m3u8 位址。
+  網址加 ?demo=1 會用假感測資料（沒有板子時看版面）。
+-->
+<style>
+:root{
+  --bg:#0a0f1c;--bg2:#101828;--card:rgba(24,33,54,.72);--line:rgba(120,140,190,.18);--tx:#eaf0ff;--mu:#8e9bbd;--track:#202b45;
+  --c-temp:#ff7a59;--c-temp2:#ffb347;
+  --c-humi:#38bdf8;--c-humi2:#22d3ee;
+  --c-light:#ffd166;--c-light2:#fff3b0;
+  --c-feel:#a78bfa;--c-feel2:#f0abfc;
+  --ok:#4ade80;--bad:#f87171;--wa:#fbbf24;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;color:var(--tx);font:15px/1.55 "Microsoft JhengHei","PingFang TC",system-ui,sans-serif;
+  background:radial-gradient(1000px 600px at 12% -10%,#1b2a52 0,transparent 60%),radial-gradient(900px 500px at 100% 0,#2a1b4d 0,transparent 55%),var(--bg);
+  background-attachment:fixed;min-height:100vh}
+header{position:sticky;top:0;z-index:20;backdrop-filter:blur(14px);background:rgba(10,15,28,.72);border-bottom:1px solid var(--line)}
+.bar{max-width:1240px;margin:auto;padding:12px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px;flex:1;min-width:220px}
+.logo i{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-style:normal;font-size:18px;background:linear-gradient(135deg,#38bdf8,#a78bfa)}
+.logo h1{margin:0;font-size:17px;letter-spacing:.5px}
+.logo small{display:block;color:var(--mu);font-size:12px;font-weight:400}
+nav{display:flex;gap:4px}
+nav a{color:var(--mu);text-decoration:none;padding:5px 12px;border-radius:999px;font-size:13px}
+nav a:hover{color:var(--tx);background:rgba(255,255,255,.07)}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border:1px solid var(--line);border-radius:999px;font-size:13px;color:var(--mu);background:rgba(255,255,255,.03)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 0 currentColor}
+.dot.on{background:var(--ok);animation:pulse 1.8s infinite;color:rgba(74,222,128,.6)}
+.dot.wait{background:var(--wa)}
+@keyframes pulse{70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
+main{max-width:1240px;margin:auto;padding:18px;display:grid;gap:22px}
+.sec{display:flex;align-items:baseline;gap:10px;margin:2px 2px -6px}
+.sec h2{margin:0;font-size:16px;letter-spacing:.5px}
+.sec span{color:var(--mu);font-size:12.5px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;backdrop-filter:blur(8px);box-shadow:0 10px 30px -18px #000}
+.gauges{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:900px){.gauges{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:440px){.gauges{grid-template-columns:1fr}}
+.g{position:relative;text-align:center;overflow:hidden;transition:transform .2s}
+.g:hover{transform:translateY(-3px)}
+.g:before{content:"";position:absolute;inset:auto -30% -55% -30%;height:70%;background:radial-gradient(closest-side,var(--gc),transparent);opacity:.16;pointer-events:none}
+.g h3{margin:0;font-size:13.5px;color:var(--mu);font-weight:600;letter-spacing:1px}
+.g svg{width:100%;max-width:210px;display:block;margin:2px auto 0;overflow:visible}
+.g .val{position:absolute;left:0;right:0;top:50%;transform:translateY(-58%);font-size:36px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+.g .val small{font-size:14px;font-weight:500;color:var(--mu);margin-left:3px}
+.g .lab{margin:-4px auto 0;display:inline-block;padding:2px 12px;border-radius:999px;font-size:12.5px;background:rgba(255,255,255,.06);color:var(--tx)}
+.arc{transition:stroke-dasharray .8s cubic-bezier(.2,.8,.2,1)}
+.chartbox{position:relative;height:350px}
+.meta{display:flex;gap:8px 18px;flex-wrap:wrap;color:var(--mu);font-size:12.5px;margin-top:10px;align-items:center}
+button{background:rgba(255,255,255,.06);color:var(--tx);border:1px solid var(--line);border-radius:999px;padding:5px 14px;font:inherit;font-size:13px;cursor:pointer}
+button:hover{border-color:#38bdf8}
+.cams{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:980px){.cams{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.cams{grid-template-columns:1fr}}
+.cam{padding:0;overflow:hidden;cursor:pointer;transition:transform .2s,border-color .2s}
+.cam:hover{transform:translateY(-3px);border-color:rgba(56,189,248,.5)}
+.vid{position:relative;aspect-ratio:16/9;background:#05080f}
+.vid video,.vid img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.live{position:absolute;left:10px;top:10px;display:flex;align-items:center;gap:6px;padding:2px 9px;border-radius:999px;background:rgba(0,0,0,.6);font-size:11.5px;letter-spacing:1px}
+.live:before{content:"";width:7px;height:7px;border-radius:50%;background:#ef4444;animation:blink 1.2s infinite}
+.live.off:before{background:#777;animation:none}
+@keyframes blink{50%{opacity:.25}}
+.cap{padding:10px 14px;display:flex;justify-content:space-between;gap:8px;align-items:center}
+.cap b{font-size:14px;font-weight:600}
+.cap span{color:var(--mu);font-size:12px;white-space:nowrap}
+.big{position:fixed;inset:0;z-index:50;background:rgba(3,6,12,.86);backdrop-filter:blur(6px);display:none;place-items:center;padding:18px}
+.big.on{display:grid}
+.big .box{width:min(1100px,100%)}
+.big video{width:100%;border-radius:14px;background:#000;max-height:80vh}
+.big h4{margin:0 0 10px;font-size:16px;display:flex;justify-content:space-between;align-items:center}
+footer{max-width:1240px;margin:0 auto;padding:6px 18px 40px;color:var(--mu);font-size:12.5px}
+footer a{color:#7dd3fc}
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <div class="logo"><i>⚡</i><h1>智慧節能 即時儀表板<small>HUB-8735 Ultra · 桃園中壢</small></h1></div>
+  <nav><a href="#sensors">感測器</a><a href="#trend">趨勢</a><a href="#cams">路況</a></nav>
+  <span class="pill"><span class="dot" id="dot"></span><span id="st">連線中…</span></span>
+  <span class="pill">更新 <b id="last">—</b></span>
+</div></header>
+
+<main>
+  <div class="sec" id="sensors"><h2>環境感測</h2><span>HUB-8735 經 MQTT 即時傳來</span></div>
+  <div class="gauges" id="gauges"></div>
+
+  <div class="sec" id="trend"><h2>歷史趨勢</h2><span>最近 <b id="npts">0</b> 筆</span></div>
+  <section class="card">
+    <div class="chartbox"><canvas id="chart"></canvas></div>
+    <div class="meta">
+      <span>wss://mqttgo.io:8084/mqtt</span><span>kai0124/class105/data</span>
+      <span>已收到 <b id="cnt">0</b> 筆</span><button id="clr">清除圖表</button>
+    </div>
+  </section>
+
+  <div class="sec" id="cams"><h2>中壢即時路況</h2><span>桃園市政府交通局監視器 · 點一下放大</span></div>
+  <div class="cams" id="camgrid"></div>
+</main>
+
+<footer>
+  影像來源：<a href="https://tw.live" target="_blank" rel="noopener">tw.live</a> 整理之桃園市政府交通局即時影像（cctvtraffic.tycg.gov.tw），僅供個人學習與展示；
+  版權屬原機關所有。影像載入失敗時會改顯示最後一張快照。
+</footer>
+
+<div class="big" id="big"><div class="box"><h4><span id="bigT"></span><button id="bigX">關閉 ✕</button></h4><video id="bigV" controls autoplay muted playsinline></video></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.1/mqtt.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+<script>
+const BROKER='wss://mqttgo.io:8084/mqtt';
+const TOPIC='kai0124/class105/data';
+const MAXPTS=120;
+const $=id=>document.getElementById(id);
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+const SERIES=[
+  {key:'temp', name:'溫度',     unit:'°C', min:0, max:50,  c1:'--c-temp',  c2:'--c-temp2', axis:'yT', dec:0, icon:'🌡️'},
+  {key:'humi', name:'濕度',     unit:'%',  min:0, max:100, c1:'--c-humi',  c2:'--c-humi2', axis:'yP', dec:0, icon:'💧'},
+  {key:'light',name:'亮度',     unit:'%',  min:0, max:100, c1:'--c-light', c2:'--c-light2',axis:'yP', dec:0, icon:'☀️'},
+  {key:'feel', name:'體感溫度', unit:'°C', min:0, max:50,  c1:'--c-feel',  c2:'--c-feel2', axis:'yT', dec:1, icon:'🧍'},
+];
+
+// ---------- Gauge（SVG，270° 圓弧，漸層 + 光暈 + 端點圓球）----------
+const R=70,CX=100,CY=100,SWEEP=270,CIRC=2*Math.PI*R,ARC=CIRC*SWEEP/360,START=90+(360-SWEEP)/2;
+const pt=(deg,r=R)=>[CX+r*Math.cos(deg*Math.PI/180),CY+r*Math.sin(deg*Math.PI/180)];
+function arcPath(){const [x0,y0]=pt(START),[x1,y1]=pt(START+SWEEP);return `M${x0},${y0} A${R},${R} 0 1 1 ${x1},${y1}`}
+let ticks='';
+for(let i=0;i<=10;i++){const a=START+SWEEP*i/10,[x0,y0]=pt(a,R+13),[x1,y1]=pt(a,R+(i%5?17:20));
+  ticks+=`<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="var(--mu)" stroke-width="${i%5?1:1.6}" opacity=".5"/>`}
+SERIES.forEach(s=>{
+  const d=document.createElement('div');d.className='card g';d.style.setProperty('--gc',`var(${s.c1})`);
+  d.innerHTML=`<h3>${s.icon} ${s.name}</h3>
+  <svg viewBox="0 0 200 178">
+    <defs>
+      <linearGradient id="gr_${s.key}" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="var(${s.c1})"/><stop offset="1" stop-color="var(${s.c2})"/></linearGradient>
+      <filter id="gl_${s.key}" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3.2"/></filter>
+    </defs>
+    ${ticks}
+    <path d="${arcPath()}" fill="none" stroke="var(--track)" stroke-width="13" stroke-linecap="round"/>
+    <path class="arc" id="glow_${s.key}" d="${arcPath()}" fill="none" stroke="url(#gr_${s.key})" stroke-width="13" stroke-linecap="round" stroke-dasharray="0 ${ARC+50}" filter="url(#gl_${s.key})" opacity=".55"/>
+    <path class="arc" id="arc_${s.key}" d="${arcPath()}" fill="none" stroke="url(#gr_${s.key})" stroke-width="13" stroke-linecap="round" stroke-dasharray="0 ${ARC+50}"/>
+    <circle id="knob_${s.key}" r="4.2" fill="#fff" cx="${pt(START)[0]}" cy="${pt(START)[1]}" style="transition:all .8s cubic-bezier(.2,.8,.2,1)"/>
+    <text x="${pt(START,R)[0]-2}" y="${pt(START,R)[1]+22}" fill="var(--mu)" font-size="11" text-anchor="middle">${s.min}</text>
+    <text x="${pt(START+SWEEP,R)[0]+2}" y="${pt(START+SWEEP,R)[1]+22}" fill="var(--mu)" font-size="11" text-anchor="middle">${s.max}</text>
+  </svg>
+  <div class="val" id="v_${s.key}" style="color:var(${s.c2})">—<small>${s.unit}</small></div>
+  <div class="lab" id="l_${s.key}">等待資料…</div>`;
+  $('gauges').appendChild(d);
+});
+function setGauge(s,v){
+  const f=Math.max(0,Math.min(1,(v-s.min)/(s.max-s.min))),da=`${(ARC*f).toFixed(1)} ${ARC+50}`;
+  $('arc_'+s.key).setAttribute('stroke-dasharray',da);$('glow_'+s.key).setAttribute('stroke-dasharray',da);
+  const [x,y]=pt(START+SWEEP*f);$('knob_'+s.key).setAttribute('cx',x);$('knob_'+s.key).setAttribute('cy',y);
+  $('v_'+s.key).innerHTML=`${v.toFixed(s.dec)}<small>${s.unit}</small>`;
+  $('l_'+s.key).textContent=describe(s.key,v);
+}
+function describe(k,v){
+  if(k==='temp'||k==='feel') return v<16?'🥶 偏冷':v<26?'😊 舒適':v<31?'😅 偏熱':'🥵 很熱';
+  if(k==='humi') return v<40?'🏜️ 乾燥':v<=70?'😊 舒適':'💦 潮濕';
+  return v<20?'🌙 昏暗':v<60?'⛅ 普通':'🌞 明亮';
+}
+function apparent(t,h){const e=h/100*6.105*Math.exp(17.27*t/(237.7+t));return t+0.33*e-4.0}
+
+// ---------- 折線圖 ----------
+const hist={labels:[],temp:[],humi:[],light:[],feel:[]};
+Chart.defaults.font.family='"Microsoft JhengHei",system-ui,sans-serif';
+const chart=new Chart($('chart'),{
+  type:'line',
+  data:{labels:hist.labels,datasets:SERIES.map(s=>({
+    label:`${s.name} (${s.unit})`,data:hist[s.key],borderColor:css(s.c1),backgroundColor:css(s.c1)+'22',
+    fill:s.key==='temp'||s.key==='humi',yAxisID:s.axis,tension:.35,pointRadius:0,pointHoverRadius:5,borderWidth:2.4,
+    borderDash:s.key==='feel'?[6,4]:[]
+  }))},
+  options:{
+    responsive:true,maintainAspectRatio:false,animation:{duration:400},interaction:{mode:'index',intersect:false},
+    plugins:{legend:{labels:{color:css('--tx'),usePointStyle:true,boxWidth:8}},
+      tooltip:{backgroundColor:'rgba(10,15,28,.92)',borderColor:css('--line'),borderWidth:1,padding:10}},
+    scales:{
+      x:{ticks:{color:css('--mu'),maxTicksLimit:8},grid:{color:'rgba(120,140,190,.1)'}},
+      yT:{position:'left',min:0,max:50,title:{display:true,text:'溫度 / 體感 (°C)',color:css('--mu')},ticks:{color:css('--mu')},grid:{color:'rgba(120,140,190,.1)'}},
+      yP:{position:'right',min:0,max:100,title:{display:true,text:'濕度 / 亮度 (%)',color:css('--mu')},ticks:{color:css('--mu')},grid:{drawOnChartArea:false}}
+    }
+  }
+});
+
+let count=0;
+function pushData(o){
+  const t=Number(o.temp),h=Number(o.humi),l=Number(o.light);
+  if(![t,h,l].every(Number.isFinite)) return false;
+  const vals={temp:t,humi:h,light:l,feel:apparent(t,h)};
+  SERIES.forEach(s=>setGauge(s,vals[s.key]));
+  const lab=new Date().toTimeString().slice(0,8);
+  hist.labels.push(lab);SERIES.forEach(s=>hist[s.key].push(+vals[s.key].toFixed(s.dec)));
+  if(hist.labels.length>MAXPTS){hist.labels.shift();SERIES.forEach(s=>hist[s.key].shift())}
+  chart.update();
+  count++;$('cnt').textContent=count;$('npts').textContent=hist.labels.length;$('last').textContent=lab;
+  return true;
+}
+$('clr').onclick=()=>{hist.labels.length=0;SERIES.forEach(s=>hist[s.key].length=0);chart.update();$('npts').textContent=0};
+
+// ---------- MQTT（WebSocket）----------
+function status(cls,txt){$('dot').className='dot '+cls;$('st').textContent=txt}
+if(new URLSearchParams(location.search).has('demo')){
+  status('wait','示範模式（假資料）');
+  let k=0;
+  const tick=()=>{k++;pushData({temp:Math.round(26+4*Math.sin(k/6)),humi:Math.round(60+10*Math.cos(k/9)),light:Math.round(50+40*Math.sin(k/4))})};
+  tick();setInterval(tick,1500);
+}else if(typeof mqtt==='undefined'){
+  status('','無法載入 mqtt.js（檢查網路）');
+}else{
+  const c=mqtt.connect(BROKER,{clientId:'dash_'+Math.random().toString(16).slice(2,10),clean:true,reconnectPeriod:3000,connectTimeout:8000});
+  c.on('connect',()=>{status('on','已連線 · 等待資料');c.subscribe(TOPIC,{qos:0},err=>{if(err)status('','訂閱失敗：'+err.message)})});
+  c.on('reconnect',()=>status('wait','重新連線中…'));
+  c.on('offline',()=>status('','離線'));
+  c.on('error',e=>status('','錯誤：'+e.message));
+  c.on('message',(t,m)=>{try{if(pushData(JSON.parse(m.toString())))status('on','已連線 · 接收中')}catch(e){console.warn('payload 解析失敗',m.toString())}});
+}
+
+// ---------- 中壢即時路況（HLS）----------
+// id 是 tw.live 的攝影機編號（也用來取最後快照 https://assets.tw.live/images/taoyuan/<id>.jpg）
+const CAMS=[
+  {id:'T207540',name:'中山東路・中北路口',  src:'https://cctvtraffic.tycg.gov.tw/hls/nvr2/camera074/live.m3u8'},
+  {id:'T202450',name:'延平路・中美路',      src:'https://cctvtraffic.tycg.gov.tw/hls/nvr5/camera269/live.m3u8'},
+  {id:'T205600',name:'環西路・民權路',      src:'https://cctvtraffic.tycg.gov.tw/hls/nvr1/camera033/live.m3u8'},
+  {id:'T211100',name:'中正路・中原路',      src:'https://cctvtraffic.tycg.gov.tw/hls/nvr6/camera321/live.m3u8'},
+  {id:'T207670',name:'中山東路・幸福路',    src:'https://cctvtraffic.tycg.gov.tw/hls/nvr4/camera192/live.m3u8'},
+  {id:'T203170',name:'龍岡路一段・中北路',  src:'https://cctvtraffic.tycg.gov.tw/hls/nvr6/camera319/live.m3u8'},
+];
+function attach(video,src,onState){
+  if(window.Hls&&Hls.isSupported()){
+    // 市府伺服器有時很慢（一個片段可能要十幾秒），所以逾時放寬、失敗多重試幾次
+    const slow={default:{maxTimeToFirstByteMs:30000,maxLoadTimeMs:60000,timeoutRetry:{maxNumRetry:3,retryDelayMs:0,maxRetryDelayMs:0},errorRetry:{maxNumRetry:4,retryDelayMs:1000,maxRetryDelayMs:8000}}};
+    const h=new Hls({lowLatencyMode:false,maxBufferLength:12,liveSyncDurationCount:3,fragLoadPolicy:slow,playlistLoadPolicy:slow,manifestLoadPolicy:slow});
+    h.loadSource(src);h.attachMedia(video);
+    h.on(Hls.Events.MANIFEST_PARSED,()=>video.play().catch(()=>{}));
+    video.addEventListener('playing',()=>onState&&onState(true));
+    h.on(Hls.Events.ERROR,(e,d)=>{
+      if(!d.fatal)return;
+      if(d.type===Hls.ErrorTypes.NETWORK_ERROR){onState&&onState(false);setTimeout(()=>h.startLoad(),4000)}
+      else if(d.type===Hls.ErrorTypes.MEDIA_ERROR)h.recoverMediaError();
+      else{onState&&onState(false);h.destroy()}
+    });
+    return ()=>h.destroy();
+  }
+  if(video.canPlayType('application/vnd.apple.mpegurl')){video.src=src;video.play().catch(()=>{});onState&&onState(true);return ()=>{video.removeAttribute('src');video.load()}}
+  onState&&onState(false);return ()=>{};
+}
+CAMS.forEach(c=>{
+  const el=document.createElement('div');el.className='card cam';
+  el.innerHTML=`<div class="vid"><img alt="" src="https://assets.tw.live/images/taoyuan/${c.id}.jpg"><video muted playsinline></video><span class="live off">連線中</span></div>
+  <div class="cap"><b>${c.name}</b><span>${c.id}</span></div>`;
+  $('camgrid').appendChild(el);
+  const v=el.querySelector('video'),tag=el.querySelector('.live'),img=el.querySelector('img');
+  v.style.display='none';
+  let stop=null;
+  const state=ok=>{tag.className='live'+(ok?'':' off');tag.textContent=ok?'LIVE':'快照';v.style.display=ok?'block':'none';img.style.display=ok?'none':'block'};
+  // 串流還沒好或斷線時，顯示 tw.live 的快照（每 60 秒重抓一次，tw.live 約每 5 分鐘更新）
+  setInterval(()=>{if(img.style.display!=='none')img.src='https://assets.tw.live/images/taoyuan/'+c.id+'.jpg?t='+Date.now()},60000);
+  // 進入畫面才開始載入，離開就停掉，省頻寬
+  new IntersectionObserver(es=>es.forEach(e=>{
+    if(e.isIntersecting&&!stop)stop=attach(v,c.src,state);
+    else if(!e.isIntersecting&&stop){stop();stop=null;v.pause()}
+  }),{threshold:.2}).observe(el);
+  el.onclick=()=>openBig(c);
+});
+let bigStop=null;
+function openBig(c){
+  $('bigT').textContent=c.name+'（'+c.id+'）';$('big').classList.add('on');
+  bigStop=attach($('bigV'),c.src);
+}
+function closeBig(){$('big').classList.remove('on');if(bigStop){bigStop();bigStop=null}$('bigV').pause()}
+$('bigX').onclick=closeBig;$('big').onclick=e=>{if(e.target===$('big'))closeBig()};
+addEventListener('keydown',e=>{if(e.key==='Escape')closeBig()});
+</script>
+</body>
+</html>
