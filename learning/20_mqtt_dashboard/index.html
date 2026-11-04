@@ -6,7 +6,7 @@
 <title>智慧節能 即時儀表板</title>
 <!--
   HUB-8735 智慧節能儀表板（純靜態網頁，可直接部署到 Vercel）
-  1. 感測資料：瀏覽器用 MQTT over WebSocket 連 wss://mqttgo.io:8084/mqtt，訂閱 kai0124/class105/data，
+  1. 感測資料：瀏覽器用 MQTT over WebSocket 連 wss://mqttgo.io:8084/mqtt，訂閱 eric1030/class305/data，
      payload：{"temp": 25, "humi": 60, "light": 75}（13_mqtt_dht11_oled 發布）。
      第 4 個 Gauge「體感溫度」是用溫度＋濕度算出來的（澳洲氣象局 apparent temperature）。
   2. 中壢即時路況影像：桃園市政府交通局的 HLS 串流（https://cctvtraffic.tycg.gov.tw/hls/...，
@@ -102,7 +102,7 @@ footer a{color:#7dd3fc}
   <section class="card">
     <div class="chartbox"><canvas id="chart"></canvas></div>
     <div class="meta">
-      <span>wss://mqttgo.io:8084/mqtt</span><span>kai0124/class105/data</span>
+      <span>wss://mqttgo.io:8084/mqtt</span><span>eric1030/class305/data</span>
       <span>已收到 <b id="cnt">0</b> 筆</span><button id="clr">清除圖表</button>
     </div>
   </section>
@@ -123,7 +123,7 @@ footer a{color:#7dd3fc}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
 <script>
 const BROKER='wss://mqttgo.io:8084/mqtt';
-const TOPIC='kai0124/class105/data';
+const TOPIC='eric1030/class305/data';
 const MAXPTS=120;
 const $=id=>document.getElementById(id);
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
