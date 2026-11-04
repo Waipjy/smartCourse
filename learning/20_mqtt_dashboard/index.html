@@ -42,10 +42,23 @@ nav a:hover{color:var(--tx);background:rgba(255,255,255,.07)}
 .dot.on{background:var(--ok);animation:pulse 1.8s infinite;color:rgba(74,222,128,.6)}
 .dot.wait{background:var(--wa)}
 @keyframes pulse{70%{box-shadow:0 0 0 8px transparent}100%{box-shadow:0 0 0 0 transparent}}
-main{max-width:1240px;margin:auto;padding:18px;display:grid;gap:22px}
-.sec{display:flex;align-items:baseline;gap:10px;margin:2px 2px -6px}
-.sec h2{margin:0;font-size:16px;letter-spacing:.5px}
+main{max-width:1240px;margin:auto;padding:18px;display:grid;gap:14px}
+section.blk{display:grid;gap:12px;scroll-margin-top:76px}
+section.blk+section.blk{margin-top:14px}
+.sec{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sec h2{margin:0;font-size:17px;letter-spacing:.5px;padding-left:10px;border-left:4px solid #38bdf8;line-height:1.2}
 .sec span{color:var(--mu);font-size:12.5px}
+.sec .sp{flex:1}
+.tabs{display:inline-flex;gap:4px;padding:3px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.03)}
+.tabs button{border:0;background:none;padding:3px 12px;color:var(--mu)}
+.tabs button.on{background:rgba(56,189,248,.18);color:var(--tx)}
+.banner{display:none;max-width:1240px;margin:12px auto 0;padding:9px 16px;border-radius:12px;background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.35);color:#fde68a;font-size:13.5px}
+.banner.on{display:block}
+.skel{background:linear-gradient(100deg,#0b1220 30%,#16213a 50%,#0b1220 70%);background-size:200% 100%;animation:sk 1.6s infinite linear}
+@keyframes sk{to{background-position:-200% 0}}
+@media(max-width:640px){nav{display:none}.bar{padding:10px 14px}.logo h1{font-size:15px}main{padding:14px}.chartbox{height:260px!important}.g .val{font-size:30px}}
+@media(hover:none){.g:hover,.cam:hover{transform:none}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;backdrop-filter:blur(8px);box-shadow:0 10px 30px -18px #000}
 .gauges{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
 @media(max-width:900px){.gauges{grid-template-columns:repeat(2,1fr)}}
@@ -69,6 +82,9 @@ button:hover{border-color:#38bdf8}
 .cam{padding:0;overflow:hidden;cursor:pointer;transition:transform .2s,border-color .2s}
 .cam:hover{transform:translateY(-3px);border-color:rgba(56,189,248,.5)}
 .vid{position:relative;aspect-ratio:16/9;background:#05080f}
+.cam .cap{flex-direction:column;align-items:flex-start;gap:2px}
+.cam .cap .cnt{white-space:normal;color:var(--tx);font-size:13px}
+.cam .cap .id{color:var(--mu);font-size:11.5px;margin-left:8px;font-weight:400}
 .vid video,.vid img,.vid canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .vid video{opacity:0;pointer-events:none}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -98,22 +114,31 @@ footer a{color:#7dd3fc}
   <span class="pill">更新 <b id="last">—</b></span>
 </div></header>
 
+<div class="banner" id="stale"></div>
 <main>
-  <div class="sec" id="sensors"><h2>環境感測</h2><span>HUB-8735 經 MQTT 即時傳來</span></div>
-  <div class="gauges" id="gauges"></div>
+  <section class="blk" id="sensors">
+    <div class="sec"><h2>環境感測</h2><span>HUB-8735 經 MQTT 即時傳來</span></div>
+    <div class="gauges" id="gauges"></div>
+  </section>
 
-  <div class="sec" id="trend"><h2>歷史趨勢</h2><span>最近 <b id="npts">0</b> 筆</span></div>
-  <section class="card">
-    <div class="chartbox"><canvas id="chart"></canvas></div>
-    <div class="meta">
-      <span>wss://mqttgo.io:8084/mqtt</span><span>eric1030/class305/data</span>
-      <span>已收到 <b id="cnt">0</b> 筆</span><button id="clr">清除圖表</button>
+  <section class="blk" id="trend">
+    <div class="sec"><h2>歷史趨勢</h2><span>顯示 <b id="npts">0</b> 筆</span><span class="sp"></span>
+      <div class="tabs" id="range"><button data-n="30">30 筆</button><button data-n="60">60 筆</button><button data-n="120" class="on">全部</button></div>
+    </div>
+    <div class="card">
+      <div class="chartbox"><canvas id="chart"></canvas></div>
+      <div class="meta">
+        <span>wss://mqttgo.io:8084/mqtt</span><span>eric1030/class305/data</span>
+        <span>本次已收到 <b id="cnt">0</b> 筆</span><span class="sp" style="flex:1"></span><button id="clr">清除圖表</button>
+      </div>
     </div>
   </section>
 
-  <div class="sec" id="cams"><h2>中壢即時路況 · AI 車流辨識</h2><span>每 10 秒辨識一張 · 點一下看即時影像</span></div>
-  <div class="chips" id="sum"><span class="chip">等待辨識…</span></div>
-  <div class="cams" id="camgrid"></div>
+  <section class="blk" id="cams">
+    <div class="sec"><h2>中壢即時路況 · AI 車流辨識</h2><span>每 10 秒辨識一張 · 點一下看即時影像</span></div>
+    <div class="chips" id="sum"><span class="chip">等待辨識…</span></div>
+    <div class="cams" id="camgrid"></div>
+  </section>
 </main>
 
 <footer>
@@ -205,7 +230,25 @@ const chart=new Chart($('chart'),{
   }
 });
 
-let count=0;
+let count=0,lastTs=0,rangeN=120;
+const t0=Date.now();
+// 圖表只顯示最近 rangeN 筆（30 / 60 / 全部）
+function refreshChart(){
+  const n=hist.labels.length;
+  chart.options.scales.x.min=Math.max(0,n-rangeN);chart.update();
+  $('npts').textContent=Math.min(n,rangeN);
+}
+document.querySelectorAll('#range button').forEach(b=>b.onclick=()=>{
+  rangeN=+b.dataset.n;document.querySelectorAll('#range button').forEach(x=>x.classList.toggle('on',x===b));refreshChart();
+});
+// 太久沒收到資料就提醒：公開 broker 不保存歷史，頁面上的是上次收到的資料或舊資料
+function checkStale(){
+  const el=$('stale'),now=Date.now();
+  if(lastTs&&now-lastTs>120000){el.textContent='⚠️ 已 '+Math.floor((now-lastTs)/60000)+' 分鐘沒收到新資料，發布端可能離線；目前顯示的是最後一次收到的數值。';el.classList.add('on')}
+  else if(!lastTs&&now-t0>60000){el.textContent='⏳ 連線後 1 分鐘仍沒收到資料：發布端可能沒在送資料。'+(hist.labels.length?'目前顯示的是這個瀏覽器上次收到的紀錄。':'');el.classList.add('on')}
+  else el.classList.remove('on');
+}
+setInterval(checkStale,5000);
 function pushData(o){
   const t=Number(o.temp),h=Number(o.humi),l=Number(o.light);
   if(![t,h,l].every(Number.isFinite)) return false;
@@ -214,12 +257,12 @@ function pushData(o){
   const lab=new Date().toTimeString().slice(0,8);
   hist.labels.push(lab);SERIES.forEach(s=>hist[s.key].push(+vals[s.key].toFixed(s.dec)));
   if(hist.labels.length>MAXPTS){hist.labels.shift();SERIES.forEach(s=>hist[s.key].shift())}
-  chart.update();
+  refreshChart();
   try{localStorage.setItem('dash_hist',JSON.stringify(hist))}catch(e){}
-  count++;$('cnt').textContent=count;$('npts').textContent=hist.labels.length;$('last').textContent=lab;
+  count++;$('cnt').textContent=count;$('last').textContent=lab;lastTs=Date.now();checkStale();
   return true;
 }
-$('clr').onclick=()=>{hist.labels.length=0;SERIES.forEach(s=>hist[s.key].length=0);chart.update();$('npts').textContent=0;try{localStorage.removeItem('dash_hist')}catch(e){}};
+$('clr').onclick=()=>{hist.labels.length=0;SERIES.forEach(s=>hist[s.key].length=0);refreshChart();$('npts').textContent=0;try{localStorage.removeItem('dash_hist')}catch(e){}};
 // 還原這個瀏覽器上次收到的資料（broker 不留歷史，所以只能靠瀏覽器自己存）
 try{
   const old=JSON.parse(localStorage.getItem('dash_hist')||'null');
@@ -227,7 +270,7 @@ try{
     hist.labels.push(...old.labels);SERIES.forEach(s=>hist[s.key].push(...(old[s.key]||[])));
     const i=hist.labels.length-1;
     SERIES.forEach(s=>setGauge(s,hist[s.key][i]));
-    $('npts').textContent=hist.labels.length;$('last').textContent=hist.labels[i]+'（上次）';chart.update();
+    $('last').textContent=hist.labels[i]+'（上次）';refreshChart();
   }
 }catch(e){}
 
@@ -319,7 +362,7 @@ let queue=Promise.resolve();
 CAMS.forEach((c,idx)=>{
   const el=document.createElement('div');el.className='card cam';
   el.innerHTML=`<div class="vid"><img alt="" src="https://assets.tw.live/images/taoyuan/${c.id}.jpg"><canvas></canvas><video muted playsinline></video><span class="live off">連線中</span></div>
-  <div class="cap"><b>${c.name}</b><span class="cnt">等待辨識…</span></div>`;
+  <div class="cap"><b>${c.name}<span class="id">${c.id}</span></b><span class="cnt">等待辨識…</span></div>`;
   $('camgrid').appendChild(el);
   const v=el.querySelector('video'),tag=el.querySelector('.live'),img=el.querySelector('img'),cv=el.querySelector('canvas'),cnt=el.querySelector('.cnt');
   cv.style.display='none';
