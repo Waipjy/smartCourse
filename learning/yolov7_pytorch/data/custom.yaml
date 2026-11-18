@@ -1,0 +1,13 @@
+# 自訂資料集設定（YOLO 格式）。把路徑和類別改成你自己的，再執行：python train.py --data data/custom.yaml
+#
+# 資料夾結構（images 和 labels 同層、檔名一一對應）：
+#   datasets/mydata/
+#     images/train/a.jpg ...        images/val/b.jpg ...
+#     labels/train/a.txt ...        labels/val/b.txt ...
+# 每個 .txt 一行一個物體：  <類別編號> <中心x> <中心y> <寬> <高>   （後四個都是 0~1 的比例）
+
+train: ../datasets/mydata/images/train   # 相對於 yolov7/ 資料夾（train.py 在那裡執行）
+val: ../datasets/mydata/images/val
+
+nc: 2                                     # 類別數
+names: ["car", "truck"]                   # 類別名稱，順序 = 類別編號 0, 1, ...

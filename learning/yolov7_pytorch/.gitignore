@@ -1,0 +1,11 @@
+# 官方程式碼與大檔案由 setup_yolov7.py 取得，不進 git
+yolov7/
+weights/
+runs/
+datasets/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.pt
+*.onnx

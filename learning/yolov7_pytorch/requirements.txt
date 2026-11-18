@@ -1,0 +1,16 @@
+# torch / torchvision 請依你的 CUDA 版本從 https://pytorch.org/get-started/locally/ 的指令安裝（GPU 版不在這裡）：
+#   例：pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+# 這個專案在 torch 2.6 + numpy 2.x + Python 3.13 上用 compat.py 補丁跑官方 YOLOv7。
+torch>=1.12
+torchvision>=0.13
+numpy
+opencv-python
+Pillow
+PyYAML
+scipy
+matplotlib
+pandas
+seaborn
+tqdm
+requests
+tensorboard
