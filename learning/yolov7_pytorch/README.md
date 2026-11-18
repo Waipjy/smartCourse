@@ -11,6 +11,16 @@ python setup_yolov7.py                 # clone 官方程式碼 + 下載 yolov7-t
 python detect.py                       # 預設跑 yolov7/inference/images，結果在 runs/detect/exp/
 ```
 
+## 即時 webcam 玩法 `01_yolo.py`
+
+```bash
+python 01_yolo.py        # 直接執行；第一次會自動下載程式碼與權重
+```
+
+ENTER 拍照（存到 `snapshots/`）、ESC 離開、M 人打馬賽克、F 篩選（全部／人／車輛）、G 尋寶遊戲、H 說明、+/- 信心度。
+有中文標籤、人數與 FPS、各類數量、擁擠警示（3 人以上紅框＋嗶聲）、有人進出提示；
+尋寶遊戲會隨機指定一種物體（杯子、手機、書…），60 秒內拿到鏡頭前找到就加分，越快越高。
+
 ## 推論 `detect.py`
 
 ```bash

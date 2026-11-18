@@ -9,3 +9,4 @@ __pycache__/
 venv/
 *.pt
 *.onnx
+snapshots/
