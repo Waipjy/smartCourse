@@ -1,0 +1,5 @@
+# Python 3.13 / mediapipe 1.x 驗證過
+mediapipe
+opencv-python
+numpy
+Pillow
