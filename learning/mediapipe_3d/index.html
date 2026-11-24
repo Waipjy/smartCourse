@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>裸眼 3D 魚缸</title>
+<!--
+  裸眼 3D（head-coupled perspective，又叫 fish tank VR）：
+  用 webcam + MediaPipe Face Landmarker 抓雙眼的 3D 位置，再用「偏軸投影」（off-axis projection）重畫畫面，
+  讓螢幕變成一扇窗：你往左看，就能看到物體的右側；靠近，視野變大。
+
+  1. 眼睛位置：Face Landmarker 的 478 個點含雙眼虹膜。虹膜實際直徑約 11.7 mm（人與人差很小），
+     用虹膜在畫面上的像素大小 + 攝影機焦距，就能算出眼睛離螢幕多遠（Z）；再用眼睛在影像中的位置反推 X / Y。
+       Z = f(px) × 1.17cm ÷ 虹膜寬度(px)         f(px) = (影像寬/2) ÷ tan(水平視角/2)
+       X = (cx - 影像寬/2) ÷ f × Z               （再左右翻轉：影像是從攝影機看過來的）
+  2. 偏軸投影：把螢幕當成固定在 z=0 的矩形窗，眼睛在 (ex,ey,ez)，視錐四邊 = 螢幕邊緣相對眼睛的位置（Kooima 公式）：
+       left = (-W/2 - ex)·n/ez   right = (W/2 - ex)·n/ez   bottom = (-H/2 - ey)·n/ez   top = (H/2 - ey)·n/ez
+     場景單位是公分，盒子的牆壁剛好貼齊螢幕邊緣，物體在 z<0（螢幕後面）或 z>0（浮出螢幕）。
+  3. 眼球在眼眶的位置（視線）：虹膜中心相對兩個眼角的偏移，-1 ~ +1。精度只有大概，標示為實驗功能。
+  準確度取決於：螢幕實際尺寸、攝影機視角（FOV）、攝影機位置。第一次請在「設定」輸入螢幕尺寸，
+  再坐在已知距離按「校準距離」。全螢幕（F）時幾何最準。需要 HTTPS 或 localhost 才能開攝影機。
+-->
+<style>
+:root{--bg:#070b14;--card:rgba(16,24,42,.82);--line:rgba(130,150,200,.25);--tx:#eaf0ff;--mu:#93a0c0;--ac:#38bdf8}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--tx);font:14px/1.5 "Microsoft JhengHei","PingFang TC",system-ui,sans-serif}
+canvas#view{position:fixed;inset:0;width:100%;height:100%;display:block}
+.panel{position:fixed;background:var(--card);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(10px);padding:12px 14px}
+#hud{left:12px;top:12px;width:236px}
+#hud h1{margin:0 0 6px;font-size:15px}
+#cam{width:100%;aspect-ratio:4/3;border-radius:8px;background:#000;display:block}
+.row{display:flex;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums;font-size:13px}
+.row span:first-child{color:var(--mu)}
+.bar{height:6px;border-radius:3px;background:#1d2840;position:relative;margin:2px 0 6px}
+.bar i{position:absolute;top:-2px;width:3px;height:10px;background:var(--ac);border-radius:2px;left:50%}
+#set{right:12px;top:12px;width:250px;max-height:calc(100% - 24px);overflow:auto}
+#set h2{margin:0 0 8px;font-size:15px;display:flex;justify-content:space-between}
+label{display:block;color:var(--mu);font-size:12.5px;margin-top:8px}
+label b{color:var(--tx);font-weight:600}
+input[type=range]{width:100%;accent-color:var(--ac)}
+input[type=number]{width:70px;background:#101a30;color:var(--tx);border:1px solid var(--line);border-radius:8px;padding:3px 6px}
+button{background:rgba(255,255,255,.07);color:var(--tx);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font:inherit;font-size:13px;cursor:pointer}
+button:hover,button.on{border-color:var(--ac);background:rgba(56,189,248,.18)}
+.btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+#start{inset:0;margin:auto;width:min(440px,92vw);height:fit-content;text-align:center;padding:22px}
+#start h1{margin:0 0 6px;font-size:22px}
+#start p{color:var(--mu);margin:6px 0 14px}
+#start .btns{justify-content:center}
+#start button{padding:9px 18px;font-size:15px}
+#msg{left:50%;bottom:16px;transform:translateX(-50%);padding:6px 16px;font-size:13px;display:none}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<canvas id="view"></canvas>
+
+<div class="panel" id="start">
+  <h1>🪟 裸眼 3D 魚缸</h1>
+  <p>螢幕變成一扇窗：頭往左右移動，就能看到物體的側面；靠近螢幕，視野變大。<br>用攝影機偵測雙眼的位置與距離，即時重畫畫面。</p>
+  <div class="btns"><button id="goCam">📷 使用攝影機</button><button id="goMouse">🖱️ 滑鼠模擬（沒攝影機也能看效果）</button></div>
+  <p style="font-size:12px;margin-top:14px">影像只在你的瀏覽器裡處理，不會上傳。第一次請到右上角「設定」輸入螢幕大小。</p>
+</div>
+
+<div class="panel hide" id="hud">
+  <h1>眼睛偵測</h1>
+  <canvas id="cam" width="320" height="240"></canvas>
+  <div class="row" style="margin-top:6px"><span>狀態</span><b id="st">—</b></div>
+  <div class="row"><span>距離螢幕</span><b id="dz">—</b></div>
+  <div class="row"><span>左右 / 上下</span><b id="dxy">—</b></div>
+  <div class="row"><span>視線（眼球）</span><b id="dg">—</b></div>
+  <div class="bar"><i id="gx"></i></div>
+  <div class="row"><span>FPS</span><b id="fps">—</b></div>
+</div>
+
+<div class="panel hide" id="set">
+  <h2>設定 <button id="hideSet" style="padding:1px 9px">收起</button></h2>
+  <div class="btns" id="scenes"><button data-s="tank" class="on">魚缸</button><button data-s="tunnel">隧道</button><button data-s="city">方塊城</button></div>
+  <label>螢幕對角線 <b id="diagV">15.6</b> 吋<input type="range" id="diag" min="10" max="34" step="0.1" value="15.6"></label>
+  <label>攝影機水平視角 <b id="fovV">65</b>°<input type="range" id="fov" min="45" max="95" step="1" value="65"></label>
+  <label>攝影機在螢幕上緣外 <b id="offV">1.0</b> cm<input type="range" id="off" min="0" max="4" step="0.1" value="1"></label>
+  <label>立體感 <b id="gainV">1.0</b>（1 = 真實；&gt;1 誇張）<input type="range" id="gain" min="0.5" max="2.5" step="0.1" value="1"></label>
+  <label>平滑度 <b id="smV">0.5</b><input type="range" id="sm" min="0" max="0.95" step="0.05" value="0.5"></label>
+  <label>我現在離螢幕 <input type="number" id="calD" value="50" min="20" max="150"> cm <button id="cal">校準距離</button></label>
+  <div class="btns">
+    <button id="fs">全螢幕 (F)</button>
+    <button id="gaze">視線聚光燈（實驗）</button>
+    <button id="preview">隱藏偵測面板</button>
+  </div>
+  <p style="color:var(--mu);font-size:12px;margin:10px 0 0">滑鼠模式：移動滑鼠 = 移動頭，滾輪 = 前後。<br>快速鍵：F 全螢幕、H 隱藏全部面板、1/2/3 換場景。</p>
+</div>
+<div class="panel hide" id="msg"></div>
+
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+const $ = id => document.getElementById(id);
+const cfg = Object.assign({diag:15.6,fov:65,off:1,gain:1,sm:.5,calK:1,gaze:false,scene:'tank'},
+  (()=>{try{return JSON.parse(localStorage.getItem('fish3d')||'{}')}catch(e){return {}}})());
+const save = () => { try{localStorage.setItem('fish3d',JSON.stringify(cfg))}catch(e){} };
+
+// ---------- 螢幕物理尺寸（公分）----------
+function screenCm(){
+  const asp = screen.width / screen.height;
+  const d = cfg.diag * 2.54, hh = d / Math.sqrt(1 + asp*asp);
+  return {W: hh*asp, H: hh};
+}
+// 瀏覽器視窗（canvas）的物理大小與相對螢幕中心的偏移；全螢幕時 = 整個螢幕
+function viewCm(){
+  const {W} = screenCm(), k = W / screen.width;   // 每個 CSS px 幾公分
+  const hw = innerWidth*k/2, hh = innerHeight*k/2;
+  const chromeH = Math.max(0, outerHeight - innerHeight - 8);
+  const cx = (screenX + innerWidth/2) - screen.width/2;
+  const cy = (screenY + chromeH + innerHeight/2) - screen.height/2;
+  const full = document.fullscreenElement != null;
+  return {hw, hh, ox: full?0:cx*k, oy: full?0:-cy*k, k};
+}
+
+// ---------- Three.js 場景 ----------
+const renderer = new THREE.WebGLRenderer({canvas:$('view'), antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05070d);
+const cam = new THREE.PerspectiveCamera();
+cam.matrixAutoUpdate = true;
+scene.add(new THREE.HemisphereLight(0xbfd8ff, 0x203050, 1.1));
+const key = new THREE.PointLight(0xffffff, 2600, 0, 1.6); key.position.set(0, 10, 25); scene.add(key);
+const spot = new THREE.PointLight(0xffe28a, 0, 0, 1.6); scene.add(spot);
+
+let world = new THREE.Group(); scene.add(world);
+const anim = [];
+const mat = (c, o={}) => new THREE.MeshStandardMaterial(Object.assign({color:c, roughness:.35, metalness:.25}, o));
+
+function lines(segs, color, opacity=1){
+  const g = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(segs,3));
+  return new THREE.LineSegments(g, new THREE.LineBasicMaterial({color, transparent:true, opacity}));
+}
+function seq(half, step){ const a=[]; for(let v=0; v<=half+1e-6; v+=step){a.push(v); if(v) a.push(-v);} a.push(half, -half); return a; }
+
+function buildTank(hw, hh, D){
+  const g = new THREE.Group(), S = [];
+  const xs = seq(hw, 5), ys = seq(hh, 5);
+  for (let z=0; z>=-D; z-=5){                      // 側牆、天花板、地板的橫線（每 5 公分一圈）
+    S.push(-hw,-hh,z, hw,-hh,z,  -hw,hh,z, hw,hh,z,  -hw,-hh,z, -hw,hh,z,  hw,-hh,z, hw,hh,z);
+  }
+  for (const x of xs) S.push(x,-hh,0, x,-hh,-D,  x,hh,0, x,hh,-D,  x,-hh,-D, x,hh,-D);   // 沿深度方向 + 後牆直線
+  for (const y of ys) S.push(-hw,y,0, -hw,y,-D,  hw,y,0, hw,y,-D,  -hw,y,-D, hw,y,-D);   // 側牆 + 後牆橫線
+  g.add(lines(S, 0x38bdf8, .55));
+  // 牆面底色（讓深度更明顯）
+  const wall = (w,h,p,r,c) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({color:c, side:THREE.DoubleSide})); m.position.set(...p); m.rotation.set(...r); g.add(m); };
+  wall(2*hw,2*hh,[0,0,-D],[0,0,0],0x0a1226);
+  wall(D,2*hh,[-hw,0,-D/2],[0,Math.PI/2,0],0x0b1630); wall(D,2*hh,[hw,0,-D/2],[0,Math.PI/2,0],0x0b1630);
+  wall(2*hw,D,[0,-hh,-D/2],[Math.PI/2,0,0],0x101c3a); wall(2*hw,D,[0,hh,-D/2],[Math.PI/2,0,0],0x08101f);
+  return g;
+}
+
+function addObj(g, mesh, x,y,z, spin){ mesh.position.set(x,y,z); g.add(mesh); if(spin) anim.push(t=>{mesh.rotation.x+=spin*.6; mesh.rotation.y+=spin;}); return mesh; }
+
+function buildScene(name){
+  scene.remove(world); anim.length = 0; world = new THREE.Group(); scene.add(world);
+  const {hw, hh} = viewCm(); const D = 55;
+  if (name === 'tank'){
+    world.add(buildTank(hw, hh, D));
+    const m = Math.min(hw, hh);
+    addObj(world, new THREE.Mesh(new THREE.SphereGeometry(m*.28, 40, 24), mat(0xff5d73)), -hw*.45, -hh*.25, -12);
+    addObj(world, new THREE.Mesh(new THREE.TorusKnotGeometry(m*.2, m*.06, 120, 16), mat(0x7cf3b0)), hw*.4, hh*.2, -26, .012);
+    addObj(world, new THREE.Mesh(new THREE.BoxGeometry(m*.4, m*.4, m*.4), mat(0xffd166)), -hw*.2, hh*.35, -42, .01);
+    addObj(world, new THREE.Mesh(new THREE.OctahedronGeometry(m*.2), mat(0xa78bfa)), hw*.55, -hh*.4, -8, .02);
+    addObj(world, new THREE.Mesh(new THREE.IcosahedronGeometry(m*.16, 1), mat(0x38bdf8, {emissive:0x0b4a66})), 0, 0, 7, .015);   // 浮出螢幕前面
+    for (let i=0;i<7;i++){                         // 地板上的柱子：幫助判斷深度
+      const h = 4+Math.random()*12, x = (Math.random()*2-1)*hw*.85, z = -6-Math.random()*(D-10);
+      addObj(world, new THREE.Mesh(new THREE.CylinderGeometry(.7,.7,h,12), mat(0x4b6cb7)), x, -hh+h/2, z);
+    }
+    const dots = new THREE.BufferGeometry(); const p=[]; for(let i=0;i<150;i++) p.push((Math.random()*2-1)*hw,(Math.random()*2-1)*hh,-Math.random()*D);
+    dots.setAttribute('position', new THREE.Float32BufferAttribute(p,3));
+    world.add(new THREE.Points(dots, new THREE.PointsMaterial({color:0xffffff, size:.5, transparent:true, opacity:.8})));
+  } else if (name === 'tunnel'){
+    const segs=[]; const N=40;
+    for (let i=0;i<N;i++){ const z=-i*4, s=1; segs.push(-hw*s,-hh*s,z, hw*s,-hh*s,z, hw*s,-hh*s,z, hw*s,hh*s,z, hw*s,hh*s,z, -hw*s,hh*s,z, -hw*s,hh*s,z, -hw*s,-hh*s,z); }
+    segs.push(-hw,-hh,0,-hw,-hh,-N*4, hw,-hh,0,hw,-hh,-N*4, hw,hh,0,hw,hh,-N*4, -hw,hh,0,-hw,hh,-N*4);
+    world.add(lines(segs, 0xf472b6, .8));
+    const b = addObj(world, new THREE.Mesh(new THREE.SphereGeometry(Math.min(hw,hh)*.15, 32, 20), mat(0xffffff,{emissive:0x335577})), 0, 0, -20);
+    let t0=0; anim.push(()=>{ t0+=.02; b.position.z = -30 + Math.sin(t0)*28; b.position.x = Math.sin(t0*1.7)*hw*.4; b.position.y = Math.cos(t0*1.3)*hh*.3; });
+  } else {
+    world.add(buildTank(hw, hh, D));
+    const cols = [0xff5d73,0x7cf3b0,0xffd166,0x38bdf8,0xa78bfa,0xf472b6];
+    for (let i=0;i<46;i++){
+      const s = 2+Math.random()*5, h = s*(1+Math.random()*3);
+      const m = addObj(world, new THREE.Mesh(new THREE.BoxGeometry(s,h,s), mat(cols[i%cols.length],{metalness:.1})), (Math.random()*2-1)*hw*.9, -hh+h/2, -4-Math.random()*(D-8));
+    }
+  }
+  key.position.set(0, hh*.6, 25);
+}
+
+// ---------- 偏軸投影 ----------
+const eye = {x:0, y:0, z:60};       // 眼睛位置（相對螢幕中心，公分）
+function applyCamera(){
+  const v = viewCm(), near = .5, far = 400;
+  const ex = eye.x - v.ox, ey = eye.y - v.oy, ez = Math.max(8, eye.z);
+  cam.position.set(ex, ey, ez); cam.quaternion.identity(); cam.updateMatrixWorld(true);
+  const s = near / ez;
+  cam.projectionMatrix.makePerspective((-v.hw-ex)*s, (v.hw-ex)*s, (v.hh-ey)*s, (-v.hh-ey)*s, near, far);
+  cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
+}
+function resize(){
+  renderer.setSize(innerWidth, innerHeight, false);
+  buildScene(cfg.scene);
+}
+addEventListener('resize', resize);
+document.addEventListener('fullscreenchange', resize);
+
+// ---------- One Euro 平滑 ----------
+class OneEuro{
+  constructor(){this.x=null;this.dx=0;this.t=0}
+  f(v, t, beta=.02, minCut=1){
+    if(this.x===null){this.x=v;this.t=t;return v}
+    const dt=Math.max(1e-3,t-this.t);this.t=t;
+    const a=(c)=>1/(1+(1/(2*Math.PI*c))/dt);
+    const dv=(v-this.x)/dt; this.dx+=a(1)*(dv-this.dx);
+    const cut=(minCut*(1-cfg.sm*.9))+beta*Math.abs(this.dx)*(1-cfg.sm*.5);
+    this.x+=a(Math.max(.05,cut))*(v-this.x); return this.x;
+  }
+}
+const fx=new OneEuro(), fy=new OneEuro(), fz=new OneEuro(), fgx=new OneEuro(), fgy=new OneEuro();
+
+// ---------- MediaPipe 臉部 / 虹膜 ----------
+let landmarker=null, video=null, mode=null, lastVideoT=-1, camCtx=$('cam').getContext('2d');
+const IRIS_R=468, IRIS_L=473;  // 受測者的右眼 / 左眼虹膜中心
+let gaze={x:0,y:0}, lastFound=0, fpsN=0, fpsT=performance.now(), fps=0;
+
+async function startCamera(){
+  say('載入臉部模型…（約 4 MB）');
+  const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+  const fileset = await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+  const base = {modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'};
+  try { landmarker = await vision.FaceLandmarker.createFromOptions(fileset, {baseOptions:{...base, delegate:'GPU'}, runningMode:'VIDEO', numFaces:1}); }
+  catch(e){ landmarker = await vision.FaceLandmarker.createFromOptions(fileset, {baseOptions:{...base, delegate:'CPU'}, runningMode:'VIDEO', numFaces:1}); }
+  const stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280}, height:{ideal:720}, facingMode:'user'}});
+  video = document.createElement('video'); video.srcObject = stream; video.playsInline = true; video.muted = true;
+  await video.play();
+  say('');
+}
+
+function trackFrame(now){
+  if (!landmarker || !video || video.readyState < 2 || video.currentTime === lastVideoT) return;
+  lastVideoT = video.currentTime;
+  const res = landmarker.detectForVideo(video, now);
+  const w = video.videoWidth, h = video.videoHeight;
+  camCtx.save(); camCtx.scale(-1,1); camCtx.drawImage(video, -320, 0, 320, 240); camCtx.restore();   // 鏡像預覽
+  const L = res.faceLandmarks && res.faceLandmarks[0];
+  if (!L){ $('st').textContent = '沒看到臉'; return; }
+  lastFound = now;
+  const P = i => ({x:L[i].x*w, y:L[i].y*h});
+  const d = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
+  const irisPx = (d(P(469),P(471)) + d(P(474),P(476))) / 2;           // 虹膜寬度（像素）
+  const f = (w/2) / Math.tan(cfg.fov*Math.PI/360);                     // 焦距（像素）
+  const zRaw = f * 1.17 / irisPx;                                      // 虹膜直徑 ≈ 1.17 cm
+  const z = zRaw * cfg.calK;
+  const c = {x:(P(IRIS_R).x+P(IRIS_L).x)/2, y:(P(IRIS_R).y+P(IRIS_L).y)/2};
+  const sc = z / f;                                                    // 每像素幾公分（在眼睛那個深度）
+  const xr = -(c.x - w/2) * sc;                                        // 影像左右相反：往你的右邊 = 正
+  const yr = -(c.y - h/2) * sc + screenCm().H/2 + cfg.off;             // 攝影機在螢幕上緣外 → 轉成相對螢幕中心
+  // 視線：虹膜中心相對兩眼角中點，除以半個眼寬
+  const gz = (iris, o, i, up, lo) => {
+    const a=P(o), b=P(i), m={x:(a.x+b.x)/2, y:(a.y+b.y)/2}, ew=d(a,b)/2, I=P(iris);
+    return {x:-(I.x-m.x)/ew, y:-(I.y-((P(up).y+P(lo).y)/2))/(ew*.6)};
+  };
+  const g1 = gz(IRIS_R,33,133,159,145), g2 = gz(IRIS_L,263,362,386,374);
+  gaze.x = fgx.f((g1.x+g2.x)/2, now/1000); gaze.y = fgy.f((g1.y+g2.y)/2, now/1000);
+  const t = now/1000;
+  eye.x = fx.f(xr*cfg.gain, t); eye.y = fy.f(yr*cfg.gain, t); eye.z = fz.f(z, t);
+  // 立體感倍率只放大 x/y 位移（z 保持真實距離）
+  // 預覽上標出虹膜與眼角
+  camCtx.fillStyle = '#38bdf8';
+  for (const i of [IRIS_R, IRIS_L, 33,133,263,362]){ camCtx.beginPath(); camCtx.arc(320-L[i].x*320, L[i].y*240, i>400?3:2, 0, 7); camCtx.fill(); }
+  $('st').textContent = '追蹤中';
+  $('dz').textContent = eye.z.toFixed(0)+' cm';
+  $('dxy').textContent = eye.x.toFixed(1)+' / '+eye.y.toFixed(1)+' cm';
+  $('dg').textContent = (gaze.x>.15?'→':gaze.x<-.15?'←':'·')+(gaze.y>.2?'↑':gaze.y<-.2?'↓':'·')+'  '+gaze.x.toFixed(2)+', '+gaze.y.toFixed(2);
+  $('gx').style.left = (50+Math.max(-1,Math.min(1,gaze.x))*45)+'%';
+  window.__zRaw = zRaw;
+}
+
+// ---------- 滑鼠模擬 ----------
+const mouse = {x:0,y:0,z:60};
+addEventListener('mousemove', e => { if(mode!=='mouse') return; const {W,H}=screenCm(); mouse.x=(e.clientX/innerWidth-.5)*W*1.2; mouse.y=-(e.clientY/innerHeight-.5)*H*1.2; });
+addEventListener('wheel', e => { if(mode!=='mouse') return; mouse.z = Math.max(15, Math.min(150, mouse.z + e.deltaY*.05)); }, {passive:true});
+
+// ---------- UI ----------
+function say(t){ const m=$('msg'); m.textContent=t; m.classList.toggle('hide', !t); m.style.display=t?'block':'none'; }
+function begin(m){ mode=m; $('start').classList.add('hide'); $('set').classList.remove('hide'); if(m==='cam') $('hud').classList.remove('hide'); resize(); say(''); }
+$('goMouse').onclick = () => begin('mouse');
+$('goCam').onclick = async () => {
+  try { await startCamera(); begin('cam'); }
+  catch(e){ console.warn(e); say('無法使用攝影機（'+(e.message||e.name)+'），改用滑鼠模擬'); setTimeout(()=>begin('mouse'),1200); }
+};
+const sliders = {diag:['diagV',1], fov:['fovV',0], off:['offV',1], gain:['gainV',1], sm:['smV',2]};
+for (const k in sliders){ const el=$(k); el.value=cfg[k]; $(sliders[k][0]).textContent=(+cfg[k]).toFixed(sliders[k][1]);
+  el.oninput = () => { cfg[k]=+el.value; $(sliders[k][0]).textContent=(+el.value).toFixed(sliders[k][1]); save(); if(k==='diag') buildScene(cfg.scene); }; }
+$('cal').onclick = () => { if(window.__zRaw){ cfg.calK = +$('calD').value / window.__zRaw; save(); say('已校準：目前距離 = '+$('calD').value+' cm'); setTimeout(()=>say(''),1800);} else say('先讓攝影機看到你的臉'); };
+document.querySelectorAll('#scenes button').forEach(b => b.onclick = () => setScene(b.dataset.s));
+function setScene(s){ cfg.scene=s; save(); document.querySelectorAll('#scenes button').forEach(x=>x.classList.toggle('on', x.dataset.s===s)); buildScene(s); }
+const toggleFs = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+$('fs').onclick = toggleFs;
+$('gaze').onclick = () => { cfg.gaze=!cfg.gaze; $('gaze').classList.toggle('on', cfg.gaze); spot.intensity = cfg.gaze?1800:0; save(); };
+$('preview').onclick = () => $('hud').classList.toggle('hide');
+$('hideSet').onclick = () => $('set').classList.add('hide');
+addEventListener('keydown', e => {
+  if (e.target.tagName==='INPUT') return;
+  if (e.key==='f'||e.key==='F') toggleFs();
+  else if (e.key==='h'||e.key==='H'){ const hide=!$('set').classList.contains('hide'); $('set').classList.toggle('hide',hide); if(mode==='cam') $('hud').classList.toggle('hide',hide); }
+  else if (e.key==='1') setScene('tank'); else if (e.key==='2') setScene('tunnel'); else if (e.key==='3') setScene('city');
+});
+$('gaze').classList.toggle('on', cfg.gaze); spot.intensity = cfg.gaze?1800:0;
+document.querySelectorAll('#scenes button').forEach(x=>x.classList.toggle('on', x.dataset.s===cfg.scene));
+
+// 測試用：window.__setEye(x,y,z) 直接指定眼睛位置（公分）
+window.__setEye = (x,y,z) => { mode='manual'; eye.x=x; eye.y=y; eye.z=z; };
+window.__begin = begin;
+
+// ---------- 主迴圈 ----------
+resize();
+(function loop(now){
+  requestAnimationFrame(loop);
+  if (mode==='cam') trackFrame(now);
+  else if (mode==='mouse'){ const t=now/1000; eye.x=fx.f(mouse.x*cfg.gain,t); eye.y=fy.f(mouse.y*cfg.gain,t); eye.z=fz.f(mouse.z,t); $('dz').textContent=eye.z.toFixed(0)+' cm'; }
+  for (const a of anim) a(now);
+  if (cfg.gaze){ const v=viewCm(); spot.position.set(gaze.x*v.hw*.9, gaze.y*v.hh*.9, -35); }
+  applyCamera();
+  renderer.render(scene, cam);
+  fpsN++; if (now-fpsT>1000){ fps=fpsN; fpsN=0; fpsT=now; $('fps').textContent=fps; }
+})(performance.now());
+</script>
+</body>
+</html>

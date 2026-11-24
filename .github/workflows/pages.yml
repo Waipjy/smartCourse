@@ -1,4 +1,6 @@
-# 把 learning/20_mqtt_dashboard 發布到 GitHub Pages
+# 發布到 GitHub Pages：
+#   /     -> learning/20_mqtt_dashboard（儀表板）
+#   /3d/  -> learning/mediapipe_3d（裸眼 3D，攝影機需要 HTTPS）
 # 網址：https://<帳號>.github.io/<repo 名稱>/
 name: Deploy dashboard to GitHub Pages
 
@@ -7,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "learning/20_mqtt_dashboard/**"
+      - "learning/mediapipe_3d/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -28,8 +31,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Assemble site
+        run: |
+          mkdir -p _site/3d
+          cp -r learning/20_mqtt_dashboard/. _site/
+          cp learning/mediapipe_3d/index.html _site/3d/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: learning/20_mqtt_dashboard
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v4
