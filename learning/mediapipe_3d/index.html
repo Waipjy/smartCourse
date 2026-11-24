@@ -228,16 +228,32 @@ let landmarker=null, video=null, mode=null, lastVideoT=-1, camCtx=$('cam').getCo
 const IRIS_R=468, IRIS_L=473;  // 受測者的右眼 / 左眼虹膜中心
 let gaze={x:0,y:0}, lastFound=0, fpsN=0, fpsT=performance.now(), fps=0;
 
+const withTimeout = (p, ms, name) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error(name + ' 逾時（' + ms/1000 + ' 秒）')), ms))]);
+// 下載檔案並顯示進度（模型約 4 MB）；回傳 Uint8Array
+async function fetchBuf(url, label){
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(label + ' 下載失敗 HTTP ' + r.status);
+  const total = +r.headers.get('content-length') || 0, rd = r.body.getReader(), chunks = []; let got = 0;
+  for (;;){ const {done, value} = await rd.read(); if (done) break; chunks.push(value); got += value.length;
+    say(label + ' ' + (got/1e6).toFixed(1) + (total ? ' / ' + (total/1e6).toFixed(1) : '') + ' MB'); }
+  const out = new Uint8Array(got); let o = 0; for (const c of chunks){ out.set(c, o); o += c.length; } return out;
+}
+
 async function startCamera(){
-  say('載入臉部模型…（約 4 MB）');
-  const vision = await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
-  const fileset = await vision.FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
-  const base = {modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'};
-  try { landmarker = await vision.FaceLandmarker.createFromOptions(fileset, {baseOptions:{...base, delegate:'GPU'}, runningMode:'VIDEO', numFaces:1}); }
-  catch(e){ landmarker = await vision.FaceLandmarker.createFromOptions(fileset, {baseOptions:{...base, delegate:'CPU'}, runningMode:'VIDEO', numFaces:1}); }
-  const stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280}, height:{ideal:720}, facingMode:'user'}});
+  const V = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+  say('① 載入 MediaPipe 程式庫…');
+  const vision = await withTimeout(import(V + '/vision_bundle.mjs'), 20000, '載入 MediaPipe 程式庫');
+  const fileset = await withTimeout(vision.FilesetResolver.forVisionTasks(V + '/wasm'), 20000, '載入 WASM');
+  const model = await withTimeout(fetchBuf('https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task', '② 下載臉部模型'), 60000, '下載臉部模型');
+  // 預設用 CPU：部分電腦的 GPU delegate 會無聲卡住；網址加 ?gpu=1 才改用 GPU
+  const useGpu = new URLSearchParams(location.search).has('gpu');
+  say('③ 初始化臉部模型（' + (useGpu ? 'GPU' : 'CPU') + '）…');
+  landmarker = await withTimeout(vision.FaceLandmarker.createFromOptions(fileset,
+    {baseOptions:{modelAssetBuffer:model, delegate:useGpu?'GPU':'CPU'}, runningMode:'VIDEO', numFaces:1}), 30000, '初始化臉部模型');
+  say('④ 請在瀏覽器上方按「允許」使用攝影機…（若一直沒反應：攝影機可能被其他程式占用，例如 Zoom、Python 視窗）');
+  const stream = await withTimeout(navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280}, height:{ideal:720}, facingMode:'user'}}), 30000, '開啟攝影機');
   video = document.createElement('video'); video.srcObject = stream; video.playsInline = true; video.muted = true;
-  await video.play();
+  await withTimeout(video.play(), 10000, '攝影機畫面');
   say('');
 }
 
@@ -287,12 +303,12 @@ addEventListener('mousemove', e => { if(mode!=='mouse') return; const {W,H}=scre
 addEventListener('wheel', e => { if(mode!=='mouse') return; mouse.z = Math.max(15, Math.min(150, mouse.z + e.deltaY*.05)); }, {passive:true});
 
 // ---------- UI ----------
-function say(t){ const m=$('msg'); m.textContent=t; m.classList.toggle('hide', !t); m.style.display=t?'block':'none'; }
+function say(t){ const m=$('msg'); m.textContent=t; m.classList.toggle('hide', !t); m.style.display=t?'block':'none'; m.style.maxWidth='min(92vw,640px)'; m.style.textAlign='center'; if(t) console.log('[3D]',t); }
 function begin(m){ mode=m; $('start').classList.add('hide'); $('set').classList.remove('hide'); if(m==='cam') $('hud').classList.remove('hide'); resize(); say(''); }
 $('goMouse').onclick = () => begin('mouse');
 $('goCam').onclick = async () => {
   try { await startCamera(); begin('cam'); }
-  catch(e){ console.warn(e); say('無法使用攝影機（'+(e.message||e.name)+'），改用滑鼠模擬'); setTimeout(()=>begin('mouse'),1200); }
+  catch(e){ console.warn(e); say('失敗：'+(e.message||e.name)+'。改用滑鼠模擬'); setTimeout(()=>begin('mouse'),3500); }
 };
 const sliders = {diag:['diagV',1], fov:['fovV',0], off:['offV',1], gain:['gainV',1], sm:['smV',2]};
 for (const k in sliders){ const el=$(k); el.value=cfg[k]; $(sliders[k][0]).textContent=(+cfg[k]).toFixed(sliders[k][1]);
