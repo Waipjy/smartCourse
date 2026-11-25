@@ -67,6 +67,7 @@ button:hover,button.on{border-color:var(--ac);background:rgba(56,189,248,.18)}
   <div class="row" style="margin-top:6px"><span>狀態</span><b id="st">—</b></div>
   <div class="row"><span>距離螢幕</span><b id="dz">—</b></div>
   <div class="row"><span>左右 / 上下</span><b id="dxy">—</b></div>
+  <div class="row"><span>頭部移動</span><b id="mv">—</b></div>
   <div class="row"><span>視線（眼球）</span><b id="dg">—</b></div>
   <div class="bar"><i id="gx"></i></div>
   <div class="row"><span>FPS</span><b id="fps">—</b></div>
@@ -81,12 +82,14 @@ button:hover,button.on{border-color:var(--ac);background:rgba(56,189,248,.18)}
   <label>立體感 <b id="gainV">1.0</b>（1 = 真實；&gt;1 誇張）<input type="range" id="gain" min="0.5" max="2.5" step="0.1" value="1"></label>
   <label>平滑度 <b id="smV">0.5</b><input type="range" id="sm" min="0" max="0.95" step="0.05" value="0.5"></label>
   <label>我現在離螢幕 <input type="number" id="calD" value="50" min="20" max="150"> cm <button id="cal">校準距離</button></label>
+  <label>方向：<button id="calDir">校準方向（頭往右移）</button></label>
+  <label><input type="checkbox" id="flipX"> 左右反轉 <input type="checkbox" id="flipY" style="margin-left:10px"> 上下反轉（移動方向跟你相反時勾選）</label>
   <div class="btns">
     <button id="fs">全螢幕 (F)</button>
     <button id="gaze">視線聚光燈（實驗）</button>
     <button id="preview">隱藏偵測面板</button>
   </div>
-  <p style="color:var(--mu);font-size:12px;margin:10px 0 0">滑鼠模式：移動滑鼠 = 移動頭，滾輪 = 前後。<br>快速鍵：F 全螢幕、H 隱藏全部面板、1/2/3 換場景。</p>
+  <p style="color:var(--mu);font-size:12px;margin:10px 0 0">正確的感覺：像透過窗戶看外面——頭往右，「螢幕後面」的遠處物體會跟著往右移，近處的往左露出側面；靠近螢幕視野變大。若方向跟這個相反，用「校準方向」。<br><br>滑鼠模式：移動滑鼠 = 移動頭，滾輪 = 前後。<br>快速鍵：F 全螢幕、H 隱藏全部面板、1/2/3 換場景。</p>
 </div>
 <div class="panel hide" id="msg"></div>
 
@@ -95,7 +98,7 @@ button:hover,button.on{border-color:var(--ac);background:rgba(56,189,248,.18)}
 import * as THREE from 'three';
 
 const $ = id => document.getElementById(id);
-const cfg = Object.assign({diag:15.6,fov:65,off:1,gain:1,sm:.5,calK:1,gaze:false,scene:'tank'},
+const cfg = Object.assign({diag:15.6,fov:65,off:1,gain:1,sm:.5,kIris:1,kIpd:1,ipd:6.3,flipX:false,flipY:false,gaze:false,scene:'tank'},
   (()=>{try{return JSON.parse(localStorage.getItem('fish3d')||'{}')}catch(e){return {}}})());
 const save = () => { try{localStorage.setItem('fish3d',JSON.stringify(cfg))}catch(e){} };
 
@@ -210,18 +213,23 @@ addEventListener('resize', resize);
 document.addEventListener('fullscreenchange', resize);
 
 // ---------- One Euro 平滑 ----------
+// x/y：截止頻率隨速度升高（慢慢動時很穩、快速移動時幾乎沒延遲）；z（距離）雜訊大，濾得比較重。
 class OneEuro{
-  constructor(){this.x=null;this.dx=0;this.t=0}
-  f(v, t, beta=.02, minCut=1){
-    if(this.x===null){this.x=v;this.t=t;return v}
-    const dt=Math.max(1e-3,t-this.t);this.t=t;
-    const a=(c)=>1/(1+(1/(2*Math.PI*c))/dt);
-    const dv=(v-this.x)/dt; this.dx+=a(1)*(dv-this.dx);
-    const cut=(minCut*(1-cfg.sm*.9))+beta*Math.abs(this.dx)*(1-cfg.sm*.5);
-    this.x+=a(Math.max(.05,cut))*(v-this.x); return this.x;
+  constructor(kind){ this.kind=kind; this.x=null; this.dx=0; this.t=0; }
+  f(v, t){
+    if (this.x===null){ this.x=v; this.t=t; return v; }
+    const dt = Math.max(1e-3, Math.min(.2, t-this.t)); this.t = t;
+    const a = c => 1/(1 + (1/(2*Math.PI*c))/dt);
+    this.dx += a(2)*((v-this.x)/dt - this.dx);                 // 速度（cm/s）
+    const base = 7 - (7-.6)*cfg.sm;                              // 平滑度 0 → 7 Hz，1 → 0.6 Hz
+    const z = this.kind==='z';
+    const cut = (z ? base*.35 : base) + (z ? .15 : .6)*Math.abs(this.dx);
+    this.x += a(cut)*(v-this.x);
+    return this.x;
   }
 }
-const fx=new OneEuro(), fy=new OneEuro(), fz=new OneEuro(), fgx=new OneEuro(), fgy=new OneEuro();
+const fx=new OneEuro('xy'), fy=new OneEuro('xy'), fz=new OneEuro('z'), fgx=new OneEuro('g'), fgy=new OneEuro('g');
+const LEAD = .045;   // 秒：偵測 + 顯示約有 40~60 ms 延遲，用速度往前推一點，畫面才不會「慢半拍」像反方向
 
 // ---------- MediaPipe 臉部 / 虹膜 ----------
 let landmarker=null, video=null, mode=null, lastVideoT=-1, camCtx=$('cam').getContext('2d');
@@ -257,6 +265,7 @@ async function startCamera(){
   say('');
 }
 
+let dirCal = null;   // 方向校準：{t0, base:[], samples:[]}
 function trackFrame(now){
   if (!landmarker || !video || video.readyState < 2 || video.currentTime === lastVideoT) return;
   lastVideoT = video.currentTime;
@@ -268,33 +277,71 @@ function trackFrame(now){
   lastFound = now;
   const P = i => ({x:L[i].x*w, y:L[i].y*h});
   const d = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
-  const irisPx = (d(P(469),P(471)) + d(P(474),P(476))) / 2;           // 虹膜寬度（像素）
   const f = (w/2) / Math.tan(cfg.fov*Math.PI/360);                     // 焦距（像素）
-  const zRaw = f * 1.17 / irisPx;                                      // 虹膜直徑 ≈ 1.17 cm
-  const z = zRaw * cfg.calK;
+
+  // 眨眼 / 瞇眼時虹膜點會亂跳 -> 這一幀不更新位置
+  const open = (up, lo, a, b) => Math.abs(P(up).y-P(lo).y) / d(P(a),P(b));
+  const blink = Math.min(open(159,145,33,133), open(386,374,263,362)) < .1;
+
+  // 距離：兩種獨立估計取平均
+  //  ① 虹膜寬度（直徑 ≈ 1.17 cm）  ② 兩眼虹膜中心的 3D 距離（≈ 瞳距 6.3 cm；用 landmark 的 z，所以轉頭也不會變短）
+  const irisPx = (d(P(469),P(471)) + d(P(474),P(476))) / 2;
+  const a = L[IRIS_R], b = L[IRIS_L];
+  const ipd3 = Math.hypot((b.x-a.x)*w, (b.y-a.y)*h, (b.z-a.z)*w);
+  const zIris = f * 1.17 / irisPx, zIpd = f * cfg.ipd / ipd3;
+  window.__zIris = zIris; window.__zIpd = zIpd;
+  const z = .5*(zIris*cfg.kIris + zIpd*cfg.kIpd);
+
   const c = {x:(P(IRIS_R).x+P(IRIS_L).x)/2, y:(P(IRIS_R).y+P(IRIS_L).y)/2};
-  const sc = z / f;                                                    // 每像素幾公分（在眼睛那個深度）
-  const xr = -(c.x - w/2) * sc;                                        // 影像左右相反：往你的右邊 = 正
-  const yr = -(c.y - h/2) * sc + screenCm().H/2 + cfg.off;             // 攝影機在螢幕上緣外 → 轉成相對螢幕中心
+  if (dirCal) { dirCal.samples.push({t:now, x:c.x/w}); }
+
+  if (!blink){
+    const sc = z / f;                                                  // 每像素幾公分（在眼睛那個深度）
+    // 預設：影像是「從攝影機看過來」，你往自己的右邊 -> 影像中往左 -> 取負號；若攝影機畫面本身是鏡像的，勾「左右反轉」
+    const xr = (cfg.flipX ? 1 : -1) * (c.x - w/2) * sc;
+    const yUp = (cfg.flipY ? 1 : -1) * (c.y - h/2) * sc;
+    const yr = yUp + screenCm().H/2 + cfg.off;                         // 攝影機在螢幕上緣外 → 轉成相對螢幕中心
+    const t = now/1000;
+    const nx = fx.f(xr*cfg.gain, t), ny = fy.f(yr*cfg.gain, t), nz = fz.f(z, t);
+    eye.x = nx + Math.max(-30, Math.min(30, fx.dx)) * LEAD;            // 用速度往前推，補償延遲
+    eye.y = ny + Math.max(-30, Math.min(30, fy.dx)) * LEAD;
+    eye.z = nz;
+    $('dz').textContent = eye.z.toFixed(0)+' cm';
+    $('dxy').textContent = eye.x.toFixed(1)+' / '+eye.y.toFixed(1)+' cm';
+    $('mv').textContent = (fx.dx>4?'→ 往右 ':fx.dx<-4?'← 往左 ':'· ')+(fy.dx>4?'↑ 往上':fy.dx<-4?'↓ 往下':'');
+  }
   // 視線：虹膜中心相對兩眼角中點，除以半個眼寬
   const gz = (iris, o, i, up, lo) => {
-    const a=P(o), b=P(i), m={x:(a.x+b.x)/2, y:(a.y+b.y)/2}, ew=d(a,b)/2, I=P(iris);
+    const A=P(o), B=P(i), m={x:(A.x+B.x)/2, y:(A.y+B.y)/2}, ew=d(A,B)/2, I=P(iris);
     return {x:-(I.x-m.x)/ew, y:-(I.y-((P(up).y+P(lo).y)/2))/(ew*.6)};
   };
   const g1 = gz(IRIS_R,33,133,159,145), g2 = gz(IRIS_L,263,362,386,374);
   gaze.x = fgx.f((g1.x+g2.x)/2, now/1000); gaze.y = fgy.f((g1.y+g2.y)/2, now/1000);
-  const t = now/1000;
-  eye.x = fx.f(xr*cfg.gain, t); eye.y = fy.f(yr*cfg.gain, t); eye.z = fz.f(z, t);
-  // 立體感倍率只放大 x/y 位移（z 保持真實距離）
-  // 預覽上標出虹膜與眼角
-  camCtx.fillStyle = '#38bdf8';
+
+  camCtx.fillStyle = blink ? '#f87171' : '#38bdf8';
   for (const i of [IRIS_R, IRIS_L, 33,133,263,362]){ camCtx.beginPath(); camCtx.arc(320-L[i].x*320, L[i].y*240, i>400?3:2, 0, 7); camCtx.fill(); }
-  $('st').textContent = '追蹤中';
-  $('dz').textContent = eye.z.toFixed(0)+' cm';
-  $('dxy').textContent = eye.x.toFixed(1)+' / '+eye.y.toFixed(1)+' cm';
+  $('st').textContent = dirCal ? '方向校準中…' : (blink ? '眨眼（略過）' : '追蹤中');
   $('dg').textContent = (gaze.x>.15?'→':gaze.x<-.15?'←':'·')+(gaze.y>.2?'↑':gaze.y<-.2?'↓':'·')+'  '+gaze.x.toFixed(2)+', '+gaze.y.toFixed(2);
   $('gx').style.left = (50+Math.max(-1,Math.min(1,gaze.x))*45)+'%';
-  window.__zRaw = zRaw;
+  if (dirCal) stepDirCal(now);
+}
+
+// 方向校準：請使用者把頭往「自己的右邊」移動，看影像中眼睛的 x 往哪邊變化，自動決定要不要左右反轉
+function startDirCal(){
+  if (mode !== 'cam') return say('方向校準只在攝影機模式');
+  dirCal = {t0: performance.now(), samples: []};
+  say('請保持臉在鏡頭內，3 秒內慢慢把頭往「你自己的右邊」移動 15 公分左右…');
+}
+function stepDirCal(now){
+  const s = dirCal.samples, el = now - dirCal.t0;
+  if (el < 3000) return;
+  const first = s.filter(p => p.t - dirCal.t0 < 500).map(p => p.x), mean = first.reduce((a,b)=>a+b,0)/Math.max(1,first.length);
+  let best = 0; for (const p of s) if (Math.abs(p.x-mean) > Math.abs(best)) best = p.x-mean;
+  dirCal = null;
+  if (Math.abs(best) < .04){ say('移動幅度太小，請再試一次（頭多往右移一點）'); setTimeout(()=>say(''),2500); return; }
+  // 正常（未鏡像）影像：往自己右邊移 -> 影像 x 變小；變大代表影像是鏡像的
+  cfg.flipX = best > 0; $('flipX').checked = cfg.flipX; save();
+  say(cfg.flipX ? '偵測到攝影機畫面是鏡像的，已自動勾選「左右反轉」' : '方向正常，不需要反轉'); setTimeout(()=>say(''),3000);
 }
 
 // ---------- 滑鼠模擬 ----------
@@ -313,7 +360,9 @@ $('goCam').onclick = async () => {
 const sliders = {diag:['diagV',1], fov:['fovV',0], off:['offV',1], gain:['gainV',1], sm:['smV',2]};
 for (const k in sliders){ const el=$(k); el.value=cfg[k]; $(sliders[k][0]).textContent=(+cfg[k]).toFixed(sliders[k][1]);
   el.oninput = () => { cfg[k]=+el.value; $(sliders[k][0]).textContent=(+el.value).toFixed(sliders[k][1]); save(); if(k==='diag') buildScene(cfg.scene); }; }
-$('cal').onclick = () => { if(window.__zRaw){ cfg.calK = +$('calD').value / window.__zRaw; save(); say('已校準：目前距離 = '+$('calD').value+' cm'); setTimeout(()=>say(''),1800);} else say('先讓攝影機看到你的臉'); };
+$('cal').onclick = () => { if(window.__zIris){ const D=+$('calD').value; cfg.kIris = D/window.__zIris; cfg.kIpd = D/window.__zIpd; save(); say('已校準：目前距離 = '+D+' cm'); setTimeout(()=>say(''),1800);} else say('先讓攝影機看到你的臉'); };
+$('calDir').onclick = startDirCal;
+for (const k of ['flipX','flipY']){ $(k).checked = cfg[k]; $(k).onchange = () => { cfg[k] = $(k).checked; save(); }; }
 document.querySelectorAll('#scenes button').forEach(b => b.onclick = () => setScene(b.dataset.s));
 function setScene(s){ cfg.scene=s; save(); document.querySelectorAll('#scenes button').forEach(x=>x.classList.toggle('on', x.dataset.s===s)); buildScene(s); }
 const toggleFs = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
