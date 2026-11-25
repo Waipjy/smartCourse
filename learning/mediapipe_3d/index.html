@@ -49,6 +49,12 @@ button:hover,button.on{border-color:var(--ac);background:rgba(56,189,248,.18)}
 #start button{padding:9px 18px;font-size:15px}
 #msg{left:50%;bottom:16px;transform:translateX(-50%);padding:6px 16px;font-size:13px;display:none}
 .hide{display:none!important}
+#gh{left:50%;top:12px;transform:translateX(-50%);padding:6px 18px;font-size:17px;font-weight:700;display:none;white-space:nowrap}
+#gm{inset:0;margin:auto;width:fit-content;height:fit-content;max-width:90vw;text-align:center;font-size:30px;font-weight:800;padding:18px 30px;display:none;pointer-events:none}
+#gm small{display:block;font-size:14px;font-weight:400;color:var(--mu);margin-top:8px;line-height:1.7}
+#aim{position:fixed;left:0;top:0;width:38px;height:38px;margin:-19px 0 0 -19px;border:2px solid #fff;border-radius:50%;pointer-events:none;display:none;box-shadow:0 0 12px rgba(56,189,248,.9)}
+#aim::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;background:#fff;border-radius:50%}
+#aim.hit{border-color:#ffd166;box-shadow:0 0 16px #ffd166}
 </style>
 </head>
 <body>
@@ -68,6 +74,8 @@ button:hover,button.on{border-color:var(--ac);background:rgba(56,189,248,.18)}
   <div class="row"><span>距離螢幕</span><b id="dz">—</b></div>
   <div class="row"><span>左右 / 上下</span><b id="dxy">—</b></div>
   <div class="row"><span>頭部移動</span><b id="mv">—</b></div>
+  <div class="row"><span>頭部姿態</span><b id="pose">—</b></div>
+  <div class="row"><span>嘴巴</span><b id="mouth">—</b></div>
   <div class="row"><span>視線（眼球）</span><b id="dg">—</b></div>
   <div class="bar"><i id="gx"></i></div>
   <div class="row"><span>FPS</span><b id="fps">—</b></div>
@@ -75,7 +83,8 @@ button:hover,button.on{border-color:var(--ac);background:rgba(56,189,248,.18)}
 
 <div class="panel hide" id="set">
   <h2>設定 <button id="hideSet" style="padding:1px 9px">收起</button></h2>
-  <div class="btns" id="scenes"><button data-s="tank" class="on">魚缸</button><button data-s="tunnel">隧道</button><button data-s="city">方塊城</button></div>
+  <div class="btns" id="scenes"><button data-s="tank" class="on">魚缸</button><button data-s="tunnel">隧道</button><button data-s="city">方塊城</button><button data-s="pop">浮出</button></div>
+  <div class="btns" id="games"><button id="gB">🫧 泡泡獵人</button><button id="gD">🚀 隧道閃避</button><button id="gX">■ 結束遊戲</button></div>
   <label>螢幕對角線 <b id="diagV">15.6</b> 吋<input type="range" id="diag" min="10" max="34" step="0.1" value="15.6"></label>
   <label>攝影機水平視角 <b id="fovV">65</b>°<input type="range" id="fov" min="45" max="95" step="1" value="65"></label>
   <label>攝影機在螢幕上緣外 <b id="offV">1.0</b> cm<input type="range" id="off" min="0" max="4" step="0.1" value="1"></label>
@@ -84,23 +93,28 @@ button:hover,button.on{border-color:var(--ac);background:rgba(56,189,248,.18)}
   <label>我現在離螢幕 <input type="number" id="calD" value="50" min="20" max="150"> cm <button id="cal">校準距離</button></label>
   <label>方向：<button id="calDir">校準方向（頭往右移）</button></label>
   <label><input type="checkbox" id="flipX"> 左右反轉 <input type="checkbox" id="flipY" style="margin-left:10px"> 上下反轉（移動方向跟你相反時勾選）</label>
+  <label>視角牽動 <b id="lookV">0.8</b>（抬頭／轉頭／歪頭時，畫面內容跟著轉；0 = 關）<input type="range" id="look" min="0" max="1.5" step="0.1" value="0.8"></label>
+  <label><button id="zero">視角歸零</button> 正視螢幕時按（Z）<br><input type="checkbox" id="yawInv"> 轉頭方向反轉 <input type="checkbox" id="pitchInv" style="margin-left:10px"> 抬頭方向反轉</label>
   <div class="btns">
     <button id="fs">全螢幕 (F)</button>
     <button id="gaze">視線聚光燈（實驗）</button>
     <button id="preview">隱藏偵測面板</button>
   </div>
-  <p style="color:var(--mu);font-size:12px;margin:10px 0 0">正確的感覺：像透過窗戶看外面——頭往右，「螢幕後面」的遠處物體會跟著往右移，近處的往左露出側面；靠近螢幕視野變大。若方向跟這個相反，用「校準方向」。<br><br>滑鼠模式：移動滑鼠 = 移動頭，滾輪 = 前後。<br>快速鍵：F 全螢幕、H 隱藏全部面板、1/2/3 換場景。</p>
+  <p style="color:var(--mu);font-size:12px;margin:10px 0 0">正確的感覺：像透過窗戶看外面——頭往右，「螢幕後面」的遠處物體會跟著往右移，近處的往左露出側面；靠近螢幕視野變大。若方向跟這個相反，用「校準方向」。<br><br>滑鼠模式：移動滑鼠 = 移動頭，滾輪 = 前後，按住 Shift 移動 = 轉頭／抬頭。<br>遊戲：B 泡泡獵人（滑鼠指哪打哪）、D 隧道閃避、空白鍵／點擊／張嘴 = 射擊或重來。<br>快速鍵：F 全螢幕、H 隱藏面板、Z 視角歸零、1/2/3/4 換場景。</p>
 </div>
 <div class="panel hide" id="msg"></div>
+<div class="panel" id="gh"></div><div class="panel" id="gm"></div><div id="aim"></div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
 import * as THREE from 'three';
 
 const $ = id => document.getElementById(id);
-const cfg = Object.assign({diag:15.6,fov:65,off:1,gain:1,sm:.5,kIris:1,kIpd:1,ipd:6.3,flipX:false,flipY:false,gaze:false,scene:'tank'},
+const cfg = Object.assign({diag:15.6,fov:65,off:1,gain:1,sm:.5,kIris:1,kIpd:1,ipd:6.3,flipX:false,flipY:false,look:.8,yawInv:false,pitchInv:false,gaze:false,scene:'tank'},
   (()=>{try{return JSON.parse(localStorage.getItem('fish3d')||'{}')}catch(e){return {}}})());
 const save = () => { try{localStorage.setItem('fish3d',JSON.stringify(cfg))}catch(e){} };
+
+let curScene = cfg.scene;
 
 // ---------- 螢幕物理尺寸（公分）----------
 function screenCm(){
@@ -116,7 +130,8 @@ function viewCm(){
   const cx = (screenX + innerWidth/2) - screen.width/2;
   const cy = (screenY + chromeH + innerHeight/2) - screen.height/2;
   const full = document.fullscreenElement != null;
-  return {hw, hh, ox: full?0:cx*k, oy: full?0:-cy*k, k};
+  const ok = isFinite(hw) && isFinite(hh) && hw > 0 && hh > 0;
+  return {hw: ok?hw:12, hh: ok?hh:8, ox: full||!isFinite(cx)?0:cx*k, oy: full||!isFinite(cy)?0:-cy*k, k};
 }
 
 // ---------- Three.js 場景 ----------
@@ -131,6 +146,8 @@ const key = new THREE.PointLight(0xffffff, 2600, 0, 1.6); key.position.set(0, 10
 const spot = new THREE.PointLight(0xffe28a, 0, 0, 1.6); scene.add(spot);
 
 let world = new THREE.Group(); scene.add(world);
+let pivot = new THREE.Group(), content = new THREE.Group();   // pivot：視角牽動時整組內容繞場景中心轉；content：實際物件
+scene.fog = new THREE.Fog(0x05070d, 45, 170);
 const anim = [];
 const mat = (c, o={}) => new THREE.MeshStandardMaterial(Object.assign({color:c, roughness:.35, metalness:.25}, o));
 
@@ -140,6 +157,11 @@ function lines(segs, color, opacity=1){
 }
 function seq(half, step){ const a=[]; for(let v=0; v<=half+1e-6; v+=step){a.push(v); if(v) a.push(-v);} a.push(half, -half); return a; }
 
+function checker(rx, ry){
+  const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d');
+  x.fillStyle = '#16296a'; x.fillRect(0,0,64,64); x.fillStyle = '#0a1534'; x.fillRect(0,0,32,32); x.fillRect(32,32,32,32);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); t.anisotropy = 8; return t;
+}
 function buildTank(hw, hh, D){
   const g = new THREE.Group(), S = [];
   const xs = seq(hw, 5), ys = seq(hh, 5);
@@ -153,7 +175,9 @@ function buildTank(hw, hh, D){
   const wall = (w,h,p,r,c) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w,h), new THREE.MeshBasicMaterial({color:c, side:THREE.DoubleSide})); m.position.set(...p); m.rotation.set(...r); g.add(m); };
   wall(2*hw,2*hh,[0,0,-D],[0,0,0],0x0a1226);
   wall(D,2*hh,[-hw,0,-D/2],[0,Math.PI/2,0],0x0b1630); wall(D,2*hh,[hw,0,-D/2],[0,Math.PI/2,0],0x0b1630);
-  wall(2*hw,D,[0,-hh,-D/2],[Math.PI/2,0,0],0x101c3a); wall(2*hw,D,[0,hh,-D/2],[Math.PI/2,0,0],0x08101f);
+  wall(2*hw,D,[0,hh,-D/2],[Math.PI/2,0,0],0x08101f);
+  const fl = new THREE.Mesh(new THREE.PlaneGeometry(2*hw,D), new THREE.MeshBasicMaterial({map:checker(2*hw/10, D/10), side:THREE.DoubleSide}));   // 棋盤格地板：最強的深度線索
+  fl.position.set(0,-hh+.01,-D/2); fl.rotation.x = -Math.PI/2; g.add(fl);
   return g;
 }
 
@@ -161,35 +185,53 @@ function addObj(g, mesh, x,y,z, spin){ mesh.position.set(x,y,z); g.add(mesh); if
 
 function buildScene(name){
   scene.remove(world); anim.length = 0; world = new THREE.Group(); scene.add(world);
-  const {hw, hh} = viewCm(); const D = 55;
+  const {hw, hh} = viewCm(); const D = name === 'g_dodge' ? DODGE_D : 55;
+  pivot = new THREE.Group(); content = new THREE.Group(); pivot.add(content); world.add(pivot);
+  pivot.position.z = -D/2; content.position.z = D/2;
   if (name === 'tank'){
     world.add(buildTank(hw, hh, D));
     const m = Math.min(hw, hh);
-    addObj(world, new THREE.Mesh(new THREE.SphereGeometry(m*.28, 40, 24), mat(0xff5d73)), -hw*.45, -hh*.25, -12);
-    addObj(world, new THREE.Mesh(new THREE.TorusKnotGeometry(m*.2, m*.06, 120, 16), mat(0x7cf3b0)), hw*.4, hh*.2, -26, .012);
-    addObj(world, new THREE.Mesh(new THREE.BoxGeometry(m*.4, m*.4, m*.4), mat(0xffd166)), -hw*.2, hh*.35, -42, .01);
-    addObj(world, new THREE.Mesh(new THREE.OctahedronGeometry(m*.2), mat(0xa78bfa)), hw*.55, -hh*.4, -8, .02);
-    addObj(world, new THREE.Mesh(new THREE.IcosahedronGeometry(m*.16, 1), mat(0x38bdf8, {emissive:0x0b4a66})), 0, 0, 7, .015);   // 浮出螢幕前面
+    addObj(content, new THREE.Mesh(new THREE.SphereGeometry(m*.28, 40, 24), mat(0xff5d73)), -hw*.45, -hh*.25, -12);
+    addObj(content, new THREE.Mesh(new THREE.TorusKnotGeometry(m*.2, m*.06, 120, 16), mat(0x7cf3b0)), hw*.4, hh*.2, -26, .012);
+    addObj(content, new THREE.Mesh(new THREE.BoxGeometry(m*.4, m*.4, m*.4), mat(0xffd166)), -hw*.2, hh*.35, -42, .01);
+    addObj(content, new THREE.Mesh(new THREE.OctahedronGeometry(m*.2), mat(0xa78bfa)), hw*.55, -hh*.4, -8, .02);
+    addObj(content, new THREE.Mesh(new THREE.IcosahedronGeometry(m*.16, 1), mat(0x38bdf8, {emissive:0x0b4a66})), 0, 0, 7, .015);   // 浮出螢幕前面
     for (let i=0;i<7;i++){                         // 地板上的柱子：幫助判斷深度
       const h = 4+Math.random()*12, x = (Math.random()*2-1)*hw*.85, z = -6-Math.random()*(D-10);
-      addObj(world, new THREE.Mesh(new THREE.CylinderGeometry(.7,.7,h,12), mat(0x4b6cb7)), x, -hh+h/2, z);
+      addObj(content, new THREE.Mesh(new THREE.CylinderGeometry(.7,.7,h,12), mat(0x4b6cb7)), x, -hh+h/2, z);
     }
     const dots = new THREE.BufferGeometry(); const p=[]; for(let i=0;i<150;i++) p.push((Math.random()*2-1)*hw,(Math.random()*2-1)*hh,-Math.random()*D);
     dots.setAttribute('position', new THREE.Float32BufferAttribute(p,3));
-    world.add(new THREE.Points(dots, new THREE.PointsMaterial({color:0xffffff, size:.5, transparent:true, opacity:.8})));
+    content.add(new THREE.Points(dots, new THREE.PointsMaterial({color:0xffffff, size:.5, transparent:true, opacity:.8})));
   } else if (name === 'tunnel'){
     const segs=[]; const N=40;
     for (let i=0;i<N;i++){ const z=-i*4, s=1; segs.push(-hw*s,-hh*s,z, hw*s,-hh*s,z, hw*s,-hh*s,z, hw*s,hh*s,z, hw*s,hh*s,z, -hw*s,hh*s,z, -hw*s,hh*s,z, -hw*s,-hh*s,z); }
     segs.push(-hw,-hh,0,-hw,-hh,-N*4, hw,-hh,0,hw,-hh,-N*4, hw,hh,0,hw,hh,-N*4, -hw,hh,0,-hw,hh,-N*4);
     world.add(lines(segs, 0xf472b6, .8));
-    const b = addObj(world, new THREE.Mesh(new THREE.SphereGeometry(Math.min(hw,hh)*.15, 32, 20), mat(0xffffff,{emissive:0x335577})), 0, 0, -20);
+    const b = addObj(content, new THREE.Mesh(new THREE.SphereGeometry(Math.min(hw,hh)*.15, 32, 20), mat(0xffffff,{emissive:0x335577})), 0, 0, -20);
     let t0=0; anim.push(()=>{ t0+=.02; b.position.z = -30 + Math.sin(t0)*28; b.position.x = Math.sin(t0*1.7)*hw*.4; b.position.y = Math.cos(t0*1.3)*hh*.3; });
+  } else if (name === 'pop'){
+    world.add(buildTank(hw, hh, D));
+    const cols = [0xff5d73,0xffd166,0x7cf3b0,0x38bdf8,0xa78bfa];
+    [-6,-16,-26,-36,-46].forEach((z,i)=>{                // 柵欄：不同深度的柱子，視差一目了然
+      for (let k=-2;k<=2;k++){ const x=(k+(i%2?.5:0))*hw*.42; if (Math.abs(x) > hw*.95) continue;
+        const h = hh*2*(.35+.2*((k+i+10)%3));
+        addObj(content, new THREE.Mesh(new THREE.CylinderGeometry(.55,.55,h,14), mat(cols[(k+i+10)%5])), x, -hh+h/2, z); }
+    });
+    const m = Math.min(hw,hh);
+    for (let i=0;i<6;i++){ const z = 6+Math.random()*16;   // 浮出螢幕前面
+      addObj(content, new THREE.Mesh(i%2 ? new THREE.SphereGeometry(m*.07,24,16) : new THREE.BoxGeometry(m*.12,m*.12,m*.12), mat(cols[i%5],{emissive:cols[i%5],emissiveIntensity:.25})),
+        (Math.random()*2-1)*hw*.7, (Math.random()*2-1)*hh*.6, z, .02); }
+  } else if (name === 'g_bubble'){
+    world.add(buildTank(hw, hh, D)); bubs.length = 0; pops.length = 0;
+  } else if (name === 'g_dodge'){
+    world.add(buildTank(hw, hh, D)); pops.length = 0; dodgeReset();
   } else {
     world.add(buildTank(hw, hh, D));
     const cols = [0xff5d73,0x7cf3b0,0xffd166,0x38bdf8,0xa78bfa,0xf472b6];
     for (let i=0;i<46;i++){
       const s = 2+Math.random()*5, h = s*(1+Math.random()*3);
-      const m = addObj(world, new THREE.Mesh(new THREE.BoxGeometry(s,h,s), mat(cols[i%cols.length],{metalness:.1})), (Math.random()*2-1)*hw*.9, -hh+h/2, -4-Math.random()*(D-8));
+      const m = addObj(content, new THREE.Mesh(new THREE.BoxGeometry(s,h,s), mat(cols[i%cols.length],{metalness:.1})), (Math.random()*2-1)*hw*.9, -hh+h/2, -4-Math.random()*(D-8));
     }
   }
   key.position.set(0, hh*.6, 25);
@@ -207,7 +249,7 @@ function applyCamera(){
 }
 function resize(){
   renderer.setSize(innerWidth, innerHeight, false);
-  buildScene(cfg.scene);
+  buildScene(curScene);
 }
 addEventListener('resize', resize);
 document.addEventListener('fullscreenchange', resize);
@@ -223,7 +265,8 @@ class OneEuro{
     this.dx += a(2)*((v-this.x)/dt - this.dx);                 // 速度（cm/s）
     const base = 7 - (7-.6)*cfg.sm;                              // 平滑度 0 → 7 Hz，1 → 0.6 Hz
     const z = this.kind==='z';
-    const cut = (z ? base*.35 : base) + (z ? .15 : .6)*Math.abs(this.dx);
+    const beta = z ? .15 : this.kind==='a' ? .02 : .6;
+    const cut = (z ? base*.35 : this.kind==='a' ? Math.min(base,3) : base) + beta*Math.abs(this.dx);
     this.x += a(cut)*(v-this.x);
     return this.x;
   }
@@ -265,6 +308,11 @@ async function startCamera(){
   say('');
 }
 
+// 頭部姿態（度）：yaw 往自己右轉為正、pitch 抬頭為正、roll 往自己右肩歪為正；mouth = 嘴張開程度（唇距 / 臉高）
+const raw = {yaw:0,pitch:0,roll:0}, sm = {yaw:0,pitch:0,roll:0}, pose = {yaw:0,pitch:0,roll:0,mouth:0};
+const pose0 = {yaw:0,pitch:0,roll:0}, zacc = {yaw:0,pitch:0,roll:0}; let zeroN = 0;
+const fyaw = new OneEuro('a'), fpit = new OneEuro('a'), frol = new OneEuro('a');
+function zeroPose(){ Object.assign(pose0, {yaw:sm.yaw, pitch:sm.pitch, roll:sm.roll}); say('視角已歸零'); setTimeout(()=>say(''),1200); }
 let dirCal = null;   // 方向校準：{t0, base:[], samples:[]}
 function trackFrame(now){
   if (!landmarker || !video || video.readyState < 2 || video.currentTime === lastVideoT) return;
@@ -293,6 +341,19 @@ function trackFrame(now){
   const z = .5*(zIris*cfg.kIris + zIpd*cfg.kIpd);
 
   const c = {x:(P(IRIS_R).x+P(IRIS_L).x)/2, y:(P(IRIS_R).y+P(IRIS_L).y)/2};
+  // ---- 頭部姿態：用臉部 3D 特徵點（兩側臉頰、額頭—下巴）的深度差，所以「抬頭」和「頭往上平移」是分得開的 ----
+  {
+    const A=L[234], B=L[454], T=L[10], C=L[152], R2=180/Math.PI, sx = cfg.flipX?-1:1, sy = cfg.flipY?-1:1, tt = now/1000;
+    const yawL = Math.atan2((B.z-A.z)*w, (B.x-A.x)*w) * R2;                 // 往自己左轉為正
+    const pitU = Math.atan2(-(C.z-T.z)*w, (C.y-T.y)*h) * R2;                // 抬頭為正
+    const rolR = -Math.atan2((b.y-a.y)*h, (b.x-a.x)*w) * R2;                // 往自己右肩歪為正
+    raw.yaw = -yawL * sx * (cfg.yawInv?-1:1); raw.pitch = pitU * sy * (cfg.pitchInv?-1:1); raw.roll = rolR * sx;
+    sm.yaw = fyaw.f(raw.yaw, tt); sm.pitch = fpit.f(raw.pitch, tt); sm.roll = frol.f(raw.roll, tt);
+    if (zeroN < 30){ zacc.yaw += raw.yaw; zacc.pitch += raw.pitch; zacc.roll += raw.roll;                      // 開頭 30 幀自動歸零
+      if (++zeroN === 30) Object.assign(pose0, {yaw:zacc.yaw/30, pitch:zacc.pitch/30, roll:zacc.roll/30}); }
+    pose.yaw = sm.yaw - pose0.yaw; pose.pitch = sm.pitch - pose0.pitch; pose.roll = sm.roll - pose0.roll;
+    pose.mouth = d(P(13),P(14)) / d(P(10),P(152));
+  }
   if (dirCal) { dirCal.samples.push({t:now, x:c.x/w}); }
 
   if (!blink){
@@ -306,6 +367,8 @@ function trackFrame(now){
     eye.x = nx + Math.max(-30, Math.min(30, fx.dx)) * LEAD;            // 用速度往前推，補償延遲
     eye.y = ny + Math.max(-30, Math.min(30, fy.dx)) * LEAD;
     eye.z = nz;
+    // 抬頭／轉頭時，眼睛會繞著脖子轉出一小段弧（約 10 公分）：把這段扣掉，剩下的才是「頭真的平移」，視差就不會被誤算成反方向
+    if (cfg.look > 0){ eye.x -= 10*Math.sin(pose.yaw*Math.PI/180); eye.y -= 10*Math.sin(pose.pitch*Math.PI/180); }
     $('dz').textContent = eye.z.toFixed(0)+' cm';
     $('dxy').textContent = eye.x.toFixed(1)+' / '+eye.y.toFixed(1)+' cm';
     $('mv').textContent = (fx.dx>4?'→ 往右 ':fx.dx<-4?'← 往左 ':'· ')+(fy.dx>4?'↑ 往上':fy.dx<-4?'↓ 往下':'');
@@ -318,6 +381,9 @@ function trackFrame(now){
   const g1 = gz(IRIS_R,33,133,159,145), g2 = gz(IRIS_L,263,362,386,374);
   gaze.x = fgx.f((g1.x+g2.x)/2, now/1000); gaze.y = fgy.f((g1.y+g2.y)/2, now/1000);
 
+  const dtx = (v,pos,neg,th=4) => Math.abs(v)<th ? '' : (v>0?pos:neg)+Math.abs(v).toFixed(0)+'° ';
+  $('pose').textContent = dtx(pose.pitch,'↑抬頭','↓低頭')+dtx(pose.yaw,'→右轉','←左轉')+dtx(pose.roll,'↷歪右','↶歪左',6) || '正視';
+  $('mouth').textContent = pose.mouth>.075 ? '😮 張嘴' : '閉嘴 ('+pose.mouth.toFixed(2)+')';
   camCtx.fillStyle = blink ? '#f87171' : '#38bdf8';
   for (const i of [IRIS_R, IRIS_L, 33,133,263,362]){ camCtx.beginPath(); camCtx.arc(320-L[i].x*320, L[i].y*240, i>400?3:2, 0, 7); camCtx.fill(); }
   $('st').textContent = dirCal ? '方向校準中…' : (blink ? '眨眼（略過）' : '追蹤中');
@@ -346,7 +412,10 @@ function stepDirCal(now){
 
 // ---------- 滑鼠模擬 ----------
 const mouse = {x:0,y:0,z:60};
-addEventListener('mousemove', e => { if(mode!=='mouse') return; const {W,H}=screenCm(); mouse.x=(e.clientX/innerWidth-.5)*W*1.2; mouse.y=-(e.clientY/innerHeight-.5)*H*1.2; });
+const aimPx = {x:innerWidth/2, y:innerHeight/2};
+addEventListener('mousemove', e => { aimPx.x=e.clientX; aimPx.y=e.clientY; if(mode!=='mouse') return;
+  if (e.shiftKey){ pose.yaw=(e.clientX/innerWidth-.5)*80; pose.pitch=-(e.clientY/innerHeight-.5)*60; return; }   // Shift + 滑鼠 = 轉頭／抬頭
+  const {W,H}=screenCm(); mouse.x=(e.clientX/innerWidth-.5)*W*1.2; mouse.y=-(e.clientY/innerHeight-.5)*H*1.2; });
 addEventListener('wheel', e => { if(mode!=='mouse') return; mouse.z = Math.max(15, Math.min(150, mouse.z + e.deltaY*.05)); }, {passive:true});
 
 // ---------- UI ----------
@@ -357,14 +426,21 @@ $('goCam').onclick = async () => {
   try { await startCamera(); begin('cam'); }
   catch(e){ console.warn(e); say('失敗：'+(e.message||e.name)+'。改用滑鼠模擬'); setTimeout(()=>begin('mouse'),3500); }
 };
-const sliders = {diag:['diagV',1], fov:['fovV',0], off:['offV',1], gain:['gainV',1], sm:['smV',2]};
+const sliders = {diag:['diagV',1], fov:['fovV',0], off:['offV',1], gain:['gainV',1], sm:['smV',2], look:['lookV',1]};
 for (const k in sliders){ const el=$(k); el.value=cfg[k]; $(sliders[k][0]).textContent=(+cfg[k]).toFixed(sliders[k][1]);
   el.oninput = () => { cfg[k]=+el.value; $(sliders[k][0]).textContent=(+el.value).toFixed(sliders[k][1]); save(); if(k==='diag') buildScene(cfg.scene); }; }
 $('cal').onclick = () => { if(window.__zIris){ const D=+$('calD').value; cfg.kIris = D/window.__zIris; cfg.kIpd = D/window.__zIpd; save(); say('已校準：目前距離 = '+D+' cm'); setTimeout(()=>say(''),1800);} else say('先讓攝影機看到你的臉'); };
 $('calDir').onclick = startDirCal;
-for (const k of ['flipX','flipY']){ $(k).checked = cfg[k]; $(k).onchange = () => { cfg[k] = $(k).checked; save(); }; }
+for (const k of ['flipX','flipY','yawInv','pitchInv']){ $(k).checked = cfg[k]; $(k).onchange = () => { cfg[k] = $(k).checked; save(); }; }
 document.querySelectorAll('#scenes button').forEach(b => b.onclick = () => setScene(b.dataset.s));
-function setScene(s){ cfg.scene=s; save(); document.querySelectorAll('#scenes button').forEach(x=>x.classList.toggle('on', x.dataset.s===s)); buildScene(s); }
+function setScene(s){
+  curScene = s;
+  if (!s.startsWith('g_')){ cfg.scene = s; save(); if (game){ game = null; $('gh').style.display = 'none'; $('aim').style.display = 'none'; big(''); } }
+  document.querySelectorAll('#scenes button').forEach(x=>x.classList.toggle('on', x.dataset.s===cfg.scene)); buildScene(s);
+}
+$('gB').onclick = () => startGame('bubble'); $('gD').onclick = () => startGame('dodge'); $('gX').onclick = () => setScene(cfg.scene);
+$('zero').onclick = zeroPose;
+addEventListener('pointerdown', e => { if (!e.target.closest('.panel')) fireReq = true; });
 const toggleFs = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
 $('fs').onclick = toggleFs;
 $('gaze').onclick = () => { cfg.gaze=!cfg.gaze; $('gaze').classList.toggle('on', cfg.gaze); spot.intensity = cfg.gaze?1800:0; save(); };
@@ -374,23 +450,145 @@ addEventListener('keydown', e => {
   if (e.target.tagName==='INPUT') return;
   if (e.key==='f'||e.key==='F') toggleFs();
   else if (e.key==='h'||e.key==='H'){ const hide=!$('set').classList.contains('hide'); $('set').classList.toggle('hide',hide); if(mode==='cam') $('hud').classList.toggle('hide',hide); }
-  else if (e.key==='1') setScene('tank'); else if (e.key==='2') setScene('tunnel'); else if (e.key==='3') setScene('city');
+  else if (e.key==='1') setScene('tank'); else if (e.key==='2') setScene('tunnel'); else if (e.key==='3') setScene('city'); else if (e.key==='4') setScene('pop');
+  else if (e.key==='z'||e.key==='Z') zeroPose();
+  else if (e.key==='b'||e.key==='B') startGame('bubble'); else if (e.key==='d'||e.key==='D') startGame('dodge');
+  else if (e.key===' '){ e.preventDefault(); fireReq = true; }
 });
 $('gaze').classList.toggle('on', cfg.gaze); spot.intensity = cfg.gaze?1800:0;
 document.querySelectorAll('#scenes button').forEach(x=>x.classList.toggle('on', x.dataset.s===cfg.scene));
 
 // 測試用：window.__setEye(x,y,z) 直接指定眼睛位置（公分）
 window.__setEye = (x,y,z) => { mode='manual'; eye.x=x; eye.y=y; eye.z=z; };
-window.__begin = begin;
+window.__begin = begin; window.__viewCm = viewCm; window.__walls = () => walls; window.__cfg = cfg; window.__pose = pose; window.__game = () => game; window.__startGame = startGame; window.__fire = () => { fireReq = true; };
+
+// ---------- 遊戲 ----------
+const DODGE_D = 80;
+let game = null, fireReq = false, mouthOn = false;
+const bubs = [], pops = [], walls = [];
+let ship = null;
+const rad = d => d*Math.PI/180, clampN = (v,a,b) => Math.max(a, Math.min(b, v));
+const bestOf = k => { try{ return +localStorage.getItem('g3d_best_'+k) || 0 }catch(e){ return 0 } };
+const setBest = (k,v) => { try{ localStorage.setItem('g3d_best_'+k, v) }catch(e){} };
+const big = (t, sub) => { const m = $('gm'); if (!t){ m.style.display = 'none'; return; } m.innerHTML = t + (sub ? '<small>'+sub+'</small>' : ''); m.style.display = 'block'; };
+
+function startGame(type){
+  if (mode === null) return;
+  $('aim').style.display = 'none';
+  game = {type, score:0, phase:'ready', readyT:performance.now()+2800, left:45, lives:3, passed:0, speed:24, dist:0, ex0:0, ey0:0, flash:0, tgt:null, dwell:0, hit:false};
+  setScene('g_'+type); $('gh').style.display = 'block';
+}
+
+function spawnBubble(v){
+  const gold = Math.random() < .12, z = -5-Math.random()*45, r = Math.min(v.hw,v.hh)*(.09+Math.random()*.06)*(1+(-z)/55*1.2);
+  const m = new THREE.Mesh(new THREE.SphereGeometry(r,24,16), new THREE.MeshStandardMaterial({color: gold?0xffd166:new THREE.Color().setHSL(Math.random(),.7,.6), emissive: gold?0xaa7700:0x112233, transparent:true, opacity:.85, roughness:.15, metalness:.1}));
+  m.position.set((Math.random()*2-1)*v.hw*.85, -v.hh-r-Math.random()*v.hh*2, z); content.add(m);
+  bubs.push({mesh:m, r, gold, vy:3+Math.random()*5, x0:m.position.x, ph:Math.random()*6});
+}
+function popBubble(b){
+  const z = b.mesh.position.z, pts = b.gold ? 50 : 10 + Math.max(0, Math.round((-z-6)/4))*2;
+  game.score += pts; if (b.gold) game.left += 3;
+  bubs.splice(bubs.indexOf(b), 1); b.mesh.material.emissive.setHex(0xffffff); pops.push({mesh:b.mesh, t:0});
+}
+function bubbleUpdate(now, dt, v, ex, ey, ez){
+  game.left -= dt;
+  while (bubs.length < 8) spawnBubble(v);
+  let ax, ay;                                       // 準心在螢幕平面上的位置（場景座標）
+  if (mode === 'cam'){ ax = ex + Math.tan(rad(clampN(pose.yaw*1.5,-60,60)))*ez; ay = ey + Math.tan(rad(clampN(pose.pitch*1.5,-60,60)))*ez; }
+  else { ax = (aimPx.x/innerWidth-.5)*2*v.hw; ay = -(aimPx.y/innerHeight-.5)*2*v.hh; }
+  ax = clampN(ax, -v.hw*1.05, v.hw*1.05); ay = clampN(ay, -v.hh*1.05, v.hh*1.05);
+  const O = new THREE.Vector3(ex,ey,ez), dir = new THREE.Vector3(ax,ay,0).sub(O).normalize();
+  let tgt = null, bt = 1e9;
+  for (const b of bubs){
+    b.mesh.position.y += b.vy*dt; b.mesh.position.x = b.x0 + Math.sin(now/700+b.ph)*1.4;
+    if (b.mesh.position.y > v.hh + b.r){ b.mesh.position.y = -v.hh - b.r - Math.random()*v.hh; b.mesh.position.x = b.x0 = (Math.random()*2-1)*v.hw*.85; }
+    const w = b.mesh.position.clone().sub(O), t = w.dot(dir);
+    if (t > 0 && w.sub(dir.clone().multiplyScalar(t)).length() < b.r*1.15 && t < bt){ bt = t; tgt = b; }
+    b.mesh.material.emissiveIntensity = 1; b.mesh.scale.setScalar(1);
+  }
+  if (tgt) tgt.mesh.scale.setScalar(1.12);
+  if (tgt !== game.tgt){ game.tgt = tgt; game.dwell = 0; } else if (tgt) game.dwell += dt;
+  if (tgt && (fireReq || game.dwell > .8)){ popBubble(tgt); game.tgt = null; game.dwell = 0; tgt = null; }
+  const a = $('aim'); a.style.display = 'block'; a.classList.toggle('hit', !!tgt);
+  a.style.left = (innerWidth/2 + ax/(2*v.hw)*innerWidth) + 'px'; a.style.top = (innerHeight/2 - ay/(2*v.hh)*innerHeight) + 'px';
+  $('gh').textContent = '🫧 分數 ' + game.score + '　⏱ ' + Math.max(0,Math.ceil(game.left)) + ' 秒　最高 ' + Math.max(game.score, bestOf('bubble'));
+  if (game.left <= 0) endGame('時間到！', '分數 ' + game.score);
+}
+
+function dodgeReset(){
+  walls.length = 0; ship = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.ConeGeometry(1.4,4.2,4), mat(0x7cf3b0,{emissive:0x1b6b45}));
+  body.rotation.x = -Math.PI/2; ship.add(body); ship.position.z = -6; content.add(ship);
+}
+function spawnWall(v, z){
+  const lv = game.passed, hs = Math.max(.2, .42-lv*.012)*Math.min(v.hw,v.hh);
+  const hx = (Math.random()*2-1)*(v.hw-hs-.5), hy = (Math.random()*2-1)*(v.hh-hs-.5);
+  const sh = new THREE.Shape(); sh.moveTo(-v.hw,-v.hh); sh.lineTo(v.hw,-v.hh); sh.lineTo(v.hw,v.hh); sh.lineTo(-v.hw,v.hh); sh.lineTo(-v.hw,-v.hh);
+  const ho = new THREE.Path(); ho.moveTo(hx-hs,hy-hs); ho.lineTo(hx-hs,hy+hs); ho.lineTo(hx+hs,hy+hs); ho.lineTo(hx+hs,hy-hs); ho.lineTo(hx-hs,hy-hs); sh.holes.push(ho);
+  const m = new THREE.Mesh(new THREE.ShapeGeometry(sh), new THREE.MeshBasicMaterial({color:new THREE.Color().setHSL((lv*.07)%1,.7,.5), side:THREE.DoubleSide, transparent:true, opacity:.88}));
+  const x0=hx-hs, x1=hx+hs, y0=hy-hs, y1=hy+hs;
+  m.add(lines([x0,y0,.05,x0,y1,.05, x0,y1,.05,x1,y1,.05, x1,y1,.05,x1,y0,.05, x1,y0,.05,x0,y0,.05], 0xffffff, 1));
+  m.position.z = z; content.add(m); walls.push({m, hx, hy, hs, z, done:false});
+}
+function dodgeUpdate(now, dt, v){
+  const sx = clampN((eye.x-game.ex0)*1.5, -v.hw+1.6, v.hw-1.6), sy = clampN((eye.y-game.ey0)*1.5, -v.hh+1.6, v.hh-1.6);
+  ship.rotation.z += ((ship.position.x - sx)*.12 - ship.rotation.z)*.3;
+  ship.position.x += (sx-ship.position.x)*.4; ship.position.y += (sy-ship.position.y)*.4;
+  game.dist += game.speed*dt; if (game.dist >= 32 || !walls.length){ game.dist = 0; spawnWall(v, -DODGE_D); }
+  for (const w of walls.slice()){
+    w.z += game.speed*dt; w.m.position.z = w.z;
+    if (!w.done && w.z >= -6){
+      w.done = true;
+      const ok = Math.abs(ship.position.x-w.hx) <= w.hs-1.1 && Math.abs(ship.position.y-w.hy) <= w.hs-1.1;
+      if (ok){ game.passed++; game.score = game.passed; game.speed = Math.min(70, 24+game.passed*1.6); }
+      else { game.lives--; game.flash = .18; if (game.lives <= 0) endGame('💥 撞到了', '通過 ' + game.passed + ' 道牆'); }
+    }
+    if (w.z > 8){ content.remove(w.m); w.m.geometry.dispose(); walls.splice(walls.indexOf(w), 1); }
+  }
+  if (game.flash > 0) game.flash -= dt;
+  scene.background.setHex(game.flash > 0 ? 0x3a0a10 : 0x05070d);
+  $('gh').textContent = '🚀 通過 ' + game.passed + '　' + '❤'.repeat(Math.max(0,game.lives)) + '🖤'.repeat(Math.max(0,3-game.lives)) + '　最高 ' + Math.max(game.passed, bestOf('dodge'));
+}
+function endGame(t, sub){
+  game.phase = 'over'; const k = game.type, sc = game.score;
+  const nb = sc > bestOf(k); if (nb) setBest(k, sc);
+  $('aim').style.display = 'none'; scene.background.setHex(0x05070d);
+  big(t, sub + (nb ? '　🏆 新紀錄！' : '　最高 ' + bestOf(k)) + '<br>張嘴 / 點一下 / 空白鍵 再玩一次');
+}
+function gameUpdate(now, dt){
+  if (!game) return;
+  const v = viewCm(), ex = eye.x - v.ox, ey = eye.y - v.oy, ez = Math.max(8, eye.z);
+  for (let i = pops.length-1; i >= 0; i--){ const p = pops[i]; p.t += dt; p.mesh.scale.setScalar(1+p.t*5); p.mesh.material.opacity = Math.max(0, .85*(1-p.t/.25));
+    if (p.t > .25){ content.remove(p.mesh); p.mesh.geometry.dispose(); pops.splice(i,1); } }
+  if (game.phase === 'ready'){
+    const n = Math.ceil((game.readyT-now)/1000);
+    big((game.type==='bubble' ? '🫧 泡泡獵人 ' : '🚀 隧道閃避 ') + Math.max(1,n),
+      game.type==='bubble' ? '用頭瞄準泡泡（轉頭、抬頭低頭；滑鼠模式直接用滑鼠），張嘴／點擊射擊，或瞄準停留 0.8 秒<br>越遠分數越高，金色泡泡 +50 分 +3 秒'
+                           : '頭往上下左右移動，讓飛船穿過牆上的洞口（3 條命）<br>倒數結束時的頭部位置 = 中心點，請坐好');
+    if (now >= game.readyT){ game.phase = 'play'; game.ex0 = eye.x; game.ey0 = eye.y; big(''); }
+    return;
+  }
+  if (game.phase === 'over'){ if (fireReq) startGame(game.type); return; }
+  if (game.type === 'bubble') bubbleUpdate(now, dt, v, ex, ey, ez); else dodgeUpdate(now, dt, v);
+}
 
 // ---------- 主迴圈 ----------
 resize();
+let lastNow = performance.now();
 (function loop(now){
   requestAnimationFrame(loop);
-  if (mode==='cam') trackFrame(now);
-  else if (mode==='mouse'){ const t=now/1000; eye.x=fx.f(mouse.x*cfg.gain,t); eye.y=fy.f(mouse.y*cfg.gain,t); eye.z=fz.f(mouse.z,t); $('dz').textContent=eye.z.toFixed(0)+' cm'; }
+  const dt = Math.min(.05, Math.max(0, (now-lastNow)/1000)); lastNow = now;
+  if (mode==='cam'){ trackFrame(now); const mo = pose.mouth>.075 ? true : pose.mouth<.05 ? false : mouthOn; if (mo && !mouthOn) fireReq = true; mouthOn = mo; }
+  else if (mode==='mouse'){ const t=now/1000, pin = game && game.type==='bubble';
+    eye.x=fx.f(pin?0:mouse.x*cfg.gain,t); eye.y=fy.f(pin?0:mouse.y*cfg.gain,t); eye.z=fz.f(mouse.z,t); $('dz').textContent=eye.z.toFixed(0)+' cm'; }
   for (const a of anim) a(now);
   if (cfg.gaze){ const v=viewCm(); spot.position.set(gaze.x*v.hw*.9, gaze.y*v.hh*.9, -35); }
+  // 視角牽動：抬頭 → 內容往下轉（等於視角往上）；右轉 → 內容往左轉；歪頭 → 內容反向旋轉。遊戲中關閉
+  const lk = game ? 0 : cfg.look;
+  pivot.rotation.x += (-rad(clampN(pose.pitch,-35,35))*lk - pivot.rotation.x)*.25;
+  pivot.rotation.y += ( rad(clampN(pose.yaw,-40,40))*lk - pivot.rotation.y)*.25;
+  pivot.rotation.z += ( rad(clampN(pose.roll,-25,25))*lk*.6 - pivot.rotation.z)*.25;
+  gameUpdate(now, dt); fireReq = false;
   applyCamera();
   renderer.render(scene, cam);
   fpsN++; if (now-fpsT>1000){ fps=fpsN; fpsN=0; fpsT=now; $('fps').textContent=fps; }

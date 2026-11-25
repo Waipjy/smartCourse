@@ -78,6 +78,10 @@
 - **15-2_finger_runner**：兩指跑酷（食指＋中指當兩條腿，輪流抬放跑步、同抬跳躍、V 字張開衝刺）。遊戲邏輯全在網頁，板子只送 `/snap` 與手部關鍵點 SSE。已編譯、用假資料伺服器測過網頁，**實機尚未驗證：目前回報偵測不到手、網頁沒有骨架**。已放寬手掌信心度到 0.35，並在序列埠每 5 秒印「手部NN 回呼／没找到手／校正失败」計數，下一步依數字判斷（回呼 0＝NN 管線沒跑；没找到手多＝模型看不到；校正失败多＝手太靠邊）。
 - **18_yolo_detection**：內建範例 ObjectDetectionCallback 的 YOLOv4-tiny（80 類），網頁疊框＋中文類別名＋信心度過濾＋統計；伺服馬達沿用 17（看到觸發類別預設 person 轉 70°，消失 1.5 秒轉 -20°，網頁可換類別）。NN 用 576x432（4:3）對齊 640x480 JPEG。已編譯，實機未測。
 - **19_yolo_fun**：18 另存＋左上角目前人數、進出記錄、最高人數、擁擠警示（閃紅框＋音效）、類別小圖示（全在網頁端）。已編譯，實機未測。
+- **20_mqtt_dashboard**（網頁，不是 sketch）：靜態儀表板，經 `wss://broker.emqx.io…:8084`/mqttgo.io 訂閱 `eric1030/class305/data`（發布端不是我們的），4 個 Gauge + 折線圖（localStorage `dash_hist` 保存歷史，公開 broker 沒有歷史資料）+ 6 支中壢 tw.live 攝影機，瀏覽器內用 TF.js COCO-SSD 偵測車輛（每 10 秒一張；tw.live 圖片沒有 CORS，所以用 HLS 影片幀）。GitHub Actions（`.github/workflows/pages.yml`）部署到 GitHub Pages：根目錄 = 20，`/3d/` = mediapipe_3d。
+- **learning/yolov7_pytorch**（電腦端 Python，跟板子無關）：`setup_yolov7.py`、`detect.py`、`train.py`、`01_yolo.py`（webcam 玩法：ENTER 拍照、ESC 離開、打馬賽克、尋寶遊戲…）。`compat.py` 處理 torch 2.6 / numpy 2 / OpenCV 中文路徑相容。已在 GPU 上驗證。
+- **learning/mediapipe_hands**（Python）：手指 21 關鍵點＋手勢（空中畫畫、剪刀石頭布）。MediaPipe 的 C 函式庫讀不了中文路徑，模型一律用 `model_asset_buffer`。
+- **learning/mediapipe_3d**（單檔網頁 `index.html`，Three.js + MediaPipe Face Landmarker）：裸眼 3D（head-coupled perspective，偏軸投影）。眼睛位置 = 虹膜寬度 + 瞳距兩種距離估計融合；One Euro 濾波 + 速度前饋；眨眼略過；「校準方向」與左右/上下反轉。**頭部姿態**（抬頭／轉頭／歪頭）用 landmark 234/454 與 10/152 的深度差算出，並扣掉繞脖子轉出的眼睛位移，讓「抬頭」和「頭上移」分開；「視角牽動」讓內容隨姿態轉。場景：魚缸/隧道/方塊城/浮出；遊戲：泡泡獵人（頭瞄準＋張嘴射擊）、隧道閃避（頭左右上下移動）。**攝影機實機行為尚未驗證**（沙盒沒有鏡頭，只用滑鼠模擬與測試鉤子 `__setEye/__pose/__startGame` 驗證）：方向、抬頭正負號、張嘴閾值（0.075）都可能需要依實機調整。
 
 ## 這片板子 / SDK 的額外踩坑（網頁與影像相關）
 
