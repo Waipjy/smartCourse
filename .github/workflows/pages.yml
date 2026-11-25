@@ -1,6 +1,7 @@
 # 發布到 GitHub Pages：
 #   /     -> learning/20_mqtt_dashboard（儀表板）
 #   /3d/  -> learning/mediapipe_3d（裸眼 3D，攝影機需要 HTTPS）
+# （部署偶爾因 artifact 服務暫時錯誤失敗，改此檔 push 即可重跑）
 # 網址：https://<帳號>.github.io/<repo 名稱>/
 name: Deploy dashboard to GitHub Pages
 
