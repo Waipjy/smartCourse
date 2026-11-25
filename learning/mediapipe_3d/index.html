@@ -55,6 +55,10 @@ button:hover,button.on{border-color:var(--ac);background:rgba(56,189,248,.18)}
 #aim{position:fixed;left:0;top:0;width:38px;height:38px;margin:-19px 0 0 -19px;border:2px solid #fff;border-radius:50%;pointer-events:none;display:none;box-shadow:0 0 12px rgba(56,189,248,.9)}
 #aim::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;background:#fff;border-radius:50%}
 #aim.hit{border-color:#ffd166;box-shadow:0 0 16px #ffd166}
+#laser{position:fixed;left:0;top:0;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:radial-gradient(circle,#fff 0 22%,#ff2d4a 38%,rgba(255,45,74,0) 72%);pointer-events:none;display:none;box-shadow:0 0 16px 5px rgba(255,45,74,.65)}
+#cdot{position:fixed;left:0;top:0;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;background:radial-gradient(circle,#fff 0 18%,#ffd166 22%,#ff8a3d 60%,rgba(255,138,61,0) 72%);pointer-events:none;display:none;animation:pl .9s ease-in-out infinite}
+@keyframes pl{50%{transform:scale(1.45)}}
+#card{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);border:2px dashed #ffd166;border-radius:10px;pointer-events:none;display:none;color:#ffd166;font-size:13px;text-align:center;line-height:1.3;padding-top:6px}
 </style>
 </head>
 <body>
@@ -95,22 +99,26 @@ button:hover,button.on{border-color:var(--ac);background:rgba(56,189,248,.18)}
   <label><input type="checkbox" id="flipX"> 左右反轉 <input type="checkbox" id="flipY" style="margin-left:10px"> 上下反轉（移動方向跟你相反時勾選）</label>
   <label>視角牽動 <b id="lookV">0.8</b>（抬頭／轉頭／歪頭時，畫面內容跟著轉；0 = 關）<input type="range" id="look" min="0" max="1.5" step="0.1" value="0.8"></label>
   <label><button id="zero">視角歸零</button> 正視螢幕時按（Z）<br><input type="checkbox" id="yawInv"> 轉頭方向反轉 <input type="checkbox" id="pitchInv" style="margin-left:10px"> 抬頭方向反轉</label>
+  <div class="btns"><button id="gcalBtn">👁 視線校正（看圓點）</button><button id="gcalReset">重設校正</button><button id="cardBtn">📏 用信用卡校正螢幕尺寸</button></div>
+  <label><input type="checkbox" id="laser"> 顯示視線雷射點 <span id="gerr" style="color:var(--mu)"></span></label>
+  <label>眼球靈敏度 <b id="gsensV">1.5</b>（眼珠轉動的放大倍率）<input type="range" id="gsens" min=".5" max="4" step=".1" value="1.5"></label>
+  <label>視線牽動畫面 <b id="wgV">0.25</b>（眼睛看哪，視角就往哪偏；0 = 關）<input type="range" id="wg" min="0" max="1" step=".05" value=".25"></label>
   <div class="btns">
     <button id="fs">全螢幕 (F)</button>
     <button id="gaze">視線聚光燈（實驗）</button>
     <button id="preview">隱藏偵測面板</button>
   </div>
-  <p style="color:var(--mu);font-size:12px;margin:10px 0 0">正確的感覺：像透過窗戶看外面——頭往右，「螢幕後面」的遠處物體會跟著往右移，近處的往左露出側面；靠近螢幕視野變大。若方向跟這個相反，用「校準方向」。<br><br>滑鼠模式：移動滑鼠 = 移動頭，滾輪 = 前後，按住 Shift 移動 = 轉頭／抬頭。<br>遊戲：B 泡泡獵人（滑鼠指哪打哪）、D 隧道閃避、空白鍵／點擊／張嘴 = 射擊或重來。<br>快速鍵：F 全螢幕、H 隱藏面板、Z 視角歸零、1/2/3/4 換場景。</p>
+  <p style="color:var(--mu);font-size:12px;margin:10px 0 0">正確的感覺：像透過窗戶看外面——頭往右，「螢幕後面」的遠處物體會跟著往右移，近處的往左露出側面；靠近螢幕視野變大。若方向跟這個相反，用「校準方向」。<br><br>滑鼠模式：移動滑鼠 = 移動頭，滾輪 = 前後，按住 Shift 移動 = 轉頭／抬頭。<br>遊戲：B 泡泡獵人（滑鼠指哪打哪）、D 隧道閃避、空白鍵／點擊／張嘴 = 射擊或重來。<br>快速鍵：F 全螢幕、H 隱藏面板、Z 視角歸零、G 視線校正（Esc 取消）、1/2/3/4 換場景。</p>
 </div>
 <div class="panel hide" id="msg"></div>
-<div class="panel" id="gh"></div><div class="panel" id="gm"></div><div id="aim"></div>
+<div class="panel" id="gh"></div><div class="panel" id="gm"></div><div id="aim"></div><div id="laser"></div><div id="cdot"></div><div id="card">信用卡 8.56 × 5.4 cm<br>貼上真卡片，調到一樣大</div>
 
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
 <script type="module">
 import * as THREE from 'three';
 
 const $ = id => document.getElementById(id);
-const cfg = Object.assign({diag:15.6,fov:65,off:1,gain:1,sm:.5,kIris:1,kIpd:1,ipd:6.3,flipX:false,flipY:false,look:.8,yawInv:false,pitchInv:false,gaze:false,scene:'tank'},
+const cfg = Object.assign({diag:15.6,fov:65,off:1,gain:1,sm:.5,kIris:1,kIpd:1,ipd:6.3,flipX:false,flipY:false,gsens:1.5,wg:.25,laser:true,gcal:null,look:.8,yawInv:false,pitchInv:false,gaze:false,scene:'tank'},
   (()=>{try{return JSON.parse(localStorage.getItem('fish3d')||'{}')}catch(e){return {}}})());
 const save = () => { try{localStorage.setItem('fish3d',JSON.stringify(cfg))}catch(e){} };
 
@@ -187,7 +195,6 @@ function buildScene(name){
   scene.remove(world); anim.length = 0; world = new THREE.Group(); scene.add(world);
   const {hw, hh} = viewCm(); const D = name === 'g_dodge' ? DODGE_D : 55;
   pivot = new THREE.Group(); content = new THREE.Group(); pivot.add(content); world.add(pivot);
-  pivot.position.z = -D/2; content.position.z = D/2;
   if (name === 'tank'){
     world.add(buildTank(hw, hh, D));
     const m = Math.min(hw, hh);
@@ -313,6 +320,72 @@ const raw = {yaw:0,pitch:0,roll:0}, sm = {yaw:0,pitch:0,roll:0}, pose = {yaw:0,p
 const pose0 = {yaw:0,pitch:0,roll:0}, zacc = {yaw:0,pitch:0,roll:0}; let zeroN = 0;
 const fyaw = new OneEuro('a'), fpit = new OneEuro('a'), frol = new OneEuro('a');
 function zeroPose(){ Object.assign(pose0, {yaw:sm.yaw, pitch:sm.pitch, roll:sm.roll}); say('視角已歸零'); setTimeout(()=>say(''),1200); }
+// ---------- 視線落點（雷射點）與校正 ----------
+// 視線落點 = 頭部朝向（yaw/pitch）+ 眼球在眼眶的偏移（gx/gy），沿著「眼睛 → 視線方向」打到螢幕平面的點。
+// 沒校正時用物理公式；校正後改用「看 9 個圓點」最小平方法擬合出來的線性模型（往預設公式收縮，避免資料不足時亂飄）。
+const eyeB = {x:0,y:0,z:60}, gpt = {x:0,y:0,ok:false}, lastFeat = {t:0};
+const fgsx = new OneEuro('a'), fgsy = new OneEuro('a');
+let gcalState = null;
+const GC_PTS = [[.1,.12],[.5,.12],[.9,.12],[.1,.5],[.5,.5],[.9,.5],[.1,.88],[.5,.88],[.9,.88]];
+function updateGazePoint(now){
+  const v = viewCm(), ex = eyeB.x-v.ox, ey = eyeB.y-v.oy, ez = Math.max(8, eyeB.z), s = ez/50;
+  const gx = gaze.x*(cfg.flipX?-1:1)*cfg.gsens, gy = gaze.y*(cfg.flipY?-1:1)*cfg.gsens, c = cfg.gcal;
+  let x, y;
+  if (c){ x = c.x[0] + c.x[1]*gx*s + c.x[2]*pose.yaw*s + c.x[3]*ex; y = c.y[0] + c.y[1]*gy*s + c.y[2]*pose.pitch*s + c.y[3]*ey; }
+  else { x = ex + ez*Math.tan(rad(clampN(pose.yaw+40*gx,-70,70))); y = ey + ez*Math.tan(rad(clampN(pose.pitch+30*gy,-70,70))); }
+  x = clampN(x, -v.hw*1.6, v.hw*1.6); y = clampN(y, -v.hh*1.6, v.hh*1.6);
+  const t = now/1000; gpt.x = fgsx.f(x,t); gpt.y = fgsy.f(y,t); gpt.ok = true;
+  Object.assign(lastFeat, {t:now, gx, gy, yaw:pose.yaw, pit:pose.pitch, ex, ey, ez});
+  const L = $('laser');
+  if (cfg.laser && !gcalState){ L.style.display = 'block';
+    L.style.left = (innerWidth/2 + clampN(gpt.x,-v.hw*1.05,v.hw*1.05)/(2*v.hw)*innerWidth) + 'px';
+    L.style.top = (innerHeight/2 - clampN(gpt.y,-v.hh*1.05,v.hh*1.05)/(2*v.hh)*innerHeight) + 'px'; }
+  else L.style.display = 'none';
+}
+function solveLS(rows, feats, key, prior){
+  const n = prior.length, A = Array.from({length:n}, () => Array(n).fill(0)), b = Array(n).fill(0);
+  for (const r of rows){ const f = feats(r), y = r[key]; for (let i=0;i<n;i++){ b[i] += f[i]*y; for (let j=0;j<n;j++) A[i][j] += f[i]*f[j]; } }
+  for (let i=0;i<n;i++){ const l = .05*A[i][i] + 1e-6; A[i][i] += l; b[i] += l*prior[i]; }        // 嶺迴歸：往預設公式收縮
+  for (let i=0;i<n;i++){
+    let p = i; for (let r=i+1;r<n;r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r;
+    [A[i],A[p]] = [A[p],A[i]]; [b[i],b[p]] = [b[p],b[i]];
+    for (let r=i+1;r<n;r++){ const f = A[r][i]/A[i][i]; for (let c=i;c<n;c++) A[r][c] -= f*A[i][c]; b[r] -= f*b[i]; }
+  }
+  const x = Array(n).fill(0);
+  for (let i=n-1;i>=0;i--){ let t = b[i]; for (let c=i+1;c<n;c++) t -= A[i][c]*x[c]; x[i] = t/A[i][i]; }
+  return x;
+}
+function startGazeCal(){
+  if (mode !== 'cam'){ say('視線校正只在攝影機模式'); setTimeout(()=>say(''),2000); return; }
+  gcalState = {i:0, t0:performance.now(), rows:[], cur:[], lastT:0}; $('set').classList.add('hide'); $('hud').classList.add('hide');
+}
+function cancelGazeCal(){ gcalState = null; $('cdot').style.display = 'none'; big(''); }
+function gazeCalStep(now){
+  const g = gcalState; if (!g) return;
+  const v = viewCm(), pt = GC_PTS[g.i], el = now - g.t0, d = $('cdot');
+  d.style.display = 'block'; d.style.left = (pt[0]*innerWidth)+'px'; d.style.top = (pt[1]*innerHeight)+'px';
+  big('👁 視線校正 ' + (g.i+1) + ' / ' + GC_PTS.length, '頭保持不動，只用眼睛盯著發光圓點（Esc 取消）');
+  if (el > 900 && el < 2200 && lastFeat.t > g.lastT){ g.lastT = lastFeat.t; g.cur.push(Object.assign({}, lastFeat)); }
+  if (el >= 2200){
+    if (g.cur.length < 8){ g.t0 = now; g.cur = []; return; }         // 沒看到臉 → 這一點重來
+    const m = k => g.cur.reduce((a,r) => a+r[k], 0)/g.cur.length;
+    g.rows.push({gx:m('gx'), gy:m('gy'), yaw:m('yaw'), pit:m('pit'), ex:m('ex'), ey:m('ey'), ez:m('ez'), tx:(pt[0]-.5)*2*v.hw, ty:-(pt[1]-.5)*2*v.hh});
+    g.i++; g.t0 = now; g.cur = [];
+    if (g.i >= GC_PTS.length) finishGazeCal();
+  }
+}
+function finishGazeCal(){
+  const rows = gcalState.rows; cancelGazeCal();
+  const fX = r => [1, r.gx*r.ez/50, r.yaw*r.ez/50, r.ex], fY = r => [1, r.gy*r.ez/50, r.pit*r.ez/50, r.ey];
+  const cx = solveLS(rows, fX, 'tx', [0,34.9,.873,1]), cy = solveLS(rows, fY, 'ty', [0,26.2,.873,1]);
+  let e = 0; for (const r of rows){ const a = fX(r), b = fY(r); e += (cx.reduce((t,c,i)=>t+c*a[i],0)-r.tx)**2 + (cy.reduce((t,c,i)=>t+c*b[i],0)-r.ty)**2; }
+  e = Math.sqrt(e/rows.length); cfg.gcal = {x:cx, y:cy}; save(); $('gerr').textContent = '（誤差約 ' + e.toFixed(1) + ' cm）';
+  say('校正完成，平均誤差約 ' + e.toFixed(1) + ' cm。看看雷射點是否跟著你的視線' + (cx[1] < 0 || cy[1] < 0 ? '；眼球方向似乎相反，請勾「左右／上下反轉」後重做' : '')); setTimeout(()=>say(''),5000);
+}
+function updateCard(){            // 螢幕尺寸校正：用信用卡（8.56 x 5.4 cm）當尺
+  const k = screenCm().W/screen.width, c = $('card'); c.style.width = (8.56/k)+'px'; c.style.height = (5.4/k)+'px';
+}
+
 let dirCal = null;   // 方向校準：{t0, base:[], samples:[]}
 function trackFrame(now){
   if (!landmarker || !video || video.readyState < 2 || video.currentTime === lastVideoT) return;
@@ -369,6 +442,9 @@ function trackFrame(now){
     eye.z = nz;
     // 抬頭／轉頭時，眼睛會繞著脖子轉出一小段弧（約 10 公分）：把這段扣掉，剩下的才是「頭真的平移」，視差就不會被誤算成反方向
     if (cfg.look > 0){ eye.x -= 10*Math.sin(pose.yaw*Math.PI/180); eye.y -= 10*Math.sin(pose.pitch*Math.PI/180); }
+    eyeB.x = eye.x; eyeB.y = eye.y; eyeB.z = eye.z;
+    // 眼球轉動本來幾乎不影響畫面（投影中心只動 ~1 cm）。這裡把「視線落點」的偏移加一部分進眼睛位置，眼睛看哪、視角就偏向哪
+    if (cfg.wg > 0 && gpt.ok && !gcalState && !game){ const v = viewCm(); eye.x += cfg.wg*.8*(gpt.x-(eyeB.x-v.ox)); eye.y += cfg.wg*.8*(gpt.y-(eyeB.y-v.oy)); }
     $('dz').textContent = eye.z.toFixed(0)+' cm';
     $('dxy').textContent = eye.x.toFixed(1)+' / '+eye.y.toFixed(1)+' cm';
     $('mv').textContent = (fx.dx>4?'→ 往右 ':fx.dx<-4?'← 往左 ':'· ')+(fy.dx>4?'↑ 往上':fy.dx<-4?'↓ 往下':'');
@@ -380,6 +456,7 @@ function trackFrame(now){
   };
   const g1 = gz(IRIS_R,33,133,159,145), g2 = gz(IRIS_L,263,362,386,374);
   gaze.x = fgx.f((g1.x+g2.x)/2, now/1000); gaze.y = fgy.f((g1.y+g2.y)/2, now/1000);
+  if (!blink) updateGazePoint(now);
 
   const dtx = (v,pos,neg,th=4) => Math.abs(v)<th ? '' : (v>0?pos:neg)+Math.abs(v).toFixed(0)+'° ';
   $('pose').textContent = dtx(pose.pitch,'↑抬頭','↓低頭')+dtx(pose.yaw,'→右轉','←左轉')+dtx(pose.roll,'↷歪右','↶歪左',6) || '正視';
@@ -426,9 +503,9 @@ $('goCam').onclick = async () => {
   try { await startCamera(); begin('cam'); }
   catch(e){ console.warn(e); say('失敗：'+(e.message||e.name)+'。改用滑鼠模擬'); setTimeout(()=>begin('mouse'),3500); }
 };
-const sliders = {diag:['diagV',1], fov:['fovV',0], off:['offV',1], gain:['gainV',1], sm:['smV',2], look:['lookV',1]};
+const sliders = {diag:['diagV',1], fov:['fovV',0], off:['offV',1], gain:['gainV',1], sm:['smV',2], look:['lookV',1], gsens:['gsensV',1], wg:['wgV',2]};
 for (const k in sliders){ const el=$(k); el.value=cfg[k]; $(sliders[k][0]).textContent=(+cfg[k]).toFixed(sliders[k][1]);
-  el.oninput = () => { cfg[k]=+el.value; $(sliders[k][0]).textContent=(+el.value).toFixed(sliders[k][1]); save(); if(k==='diag') buildScene(cfg.scene); }; }
+  el.oninput = () => { cfg[k]=+el.value; $(sliders[k][0]).textContent=(+el.value).toFixed(sliders[k][1]); save(); if(k==='diag'){ buildScene(curScene); updateCard(); } }; }
 $('cal').onclick = () => { if(window.__zIris){ const D=+$('calD').value; cfg.kIris = D/window.__zIris; cfg.kIpd = D/window.__zIpd; save(); say('已校準：目前距離 = '+D+' cm'); setTimeout(()=>say(''),1800);} else say('先讓攝影機看到你的臉'); };
 $('calDir').onclick = startDirCal;
 for (const k of ['flipX','flipY','yawInv','pitchInv']){ $(k).checked = cfg[k]; $(k).onchange = () => { cfg[k] = $(k).checked; save(); }; }
@@ -440,6 +517,12 @@ function setScene(s){
 }
 $('gB').onclick = () => startGame('bubble'); $('gD').onclick = () => startGame('dodge'); $('gX').onclick = () => setScene(cfg.scene);
 $('zero').onclick = zeroPose;
+$('gcalBtn').onclick = startGazeCal;
+$('gcalReset').onclick = () => { cfg.gcal = null; save(); $('gerr').textContent = ''; say('已重設視線校正'); setTimeout(()=>say(''),1500); };
+$('laser').checked = cfg.laser; $('laser').onchange = () => { cfg.laser = $('laser').checked; save(); };
+if (cfg.gcal) $('gerr').textContent = '（已校正）';
+$('cardBtn').onclick = () => { const c = $('card'), on = c.style.display !== 'block'; c.style.display = on ? 'block' : 'none'; updateCard();
+  say(on ? '把真的信用卡貼在螢幕上，拖「螢幕對角線」滑桿直到虛線框和卡片一樣大；再按一次按鈕結束' : ''); };
 addEventListener('pointerdown', e => { if (!e.target.closest('.panel')) fireReq = true; });
 const toggleFs = () => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
 $('fs').onclick = toggleFs;
@@ -452,6 +535,8 @@ addEventListener('keydown', e => {
   else if (e.key==='h'||e.key==='H'){ const hide=!$('set').classList.contains('hide'); $('set').classList.toggle('hide',hide); if(mode==='cam') $('hud').classList.toggle('hide',hide); }
   else if (e.key==='1') setScene('tank'); else if (e.key==='2') setScene('tunnel'); else if (e.key==='3') setScene('city'); else if (e.key==='4') setScene('pop');
   else if (e.key==='z'||e.key==='Z') zeroPose();
+  else if (e.key==='g'||e.key==='G') startGazeCal();
+  else if (e.key==='Escape'){ cancelGazeCal(); $('card').style.display = 'none'; }
   else if (e.key==='b'||e.key==='B') startGame('bubble'); else if (e.key==='d'||e.key==='D') startGame('dodge');
   else if (e.key===' '){ e.preventDefault(); fireReq = true; }
 });
@@ -460,7 +545,7 @@ document.querySelectorAll('#scenes button').forEach(x=>x.classList.toggle('on', 
 
 // 測試用：window.__setEye(x,y,z) 直接指定眼睛位置（公分）
 window.__setEye = (x,y,z) => { mode='manual'; eye.x=x; eye.y=y; eye.z=z; };
-window.__begin = begin; window.__viewCm = viewCm; window.__walls = () => walls; window.__cfg = cfg; window.__pose = pose; window.__game = () => game; window.__startGame = startGame; window.__fire = () => { fireReq = true; };
+window.__begin = begin; window.__gaze = gaze; window.__gc = {start:startGazeCal, upd:updateGazePoint, st:() => gcalState, feat:lastFeat, gpt, eyeB, eye}; window.__viewCm = viewCm; window.__walls = () => walls; window.__cfg = cfg; window.__pose = pose; window.__game = () => game; window.__startGame = startGame; window.__fire = () => { fireReq = true; };
 
 // ---------- 遊戲 ----------
 const DODGE_D = 80;
@@ -582,13 +667,15 @@ let lastNow = performance.now();
   else if (mode==='mouse'){ const t=now/1000, pin = game && game.type==='bubble';
     eye.x=fx.f(pin?0:mouse.x*cfg.gain,t); eye.y=fy.f(pin?0:mouse.y*cfg.gain,t); eye.z=fz.f(mouse.z,t); $('dz').textContent=eye.z.toFixed(0)+' cm'; }
   for (const a of anim) a(now);
-  if (cfg.gaze){ const v=viewCm(); spot.position.set(gaze.x*v.hw*.9, gaze.y*v.hh*.9, -35); }
+  if (cfg.gaze){ const v=viewCm(), ex=eye.x-v.ox, ey=eye.y-v.oy, ez=Math.max(8,eye.z), k=(ez+35)/ez; spot.position.set(ex+(gpt.x-ex)*k, ey+(gpt.y-ey)*k, -35); }   // 聚光燈放在「眼睛→視線落點」延長線上
   // 視角牽動：抬頭 → 內容往下轉（等於視角往上）；右轉 → 內容往左轉；歪頭 → 內容反向旋轉。遊戲中關閉
+  { const v=viewCm(), ex=eye.x-v.ox, ey=eye.y-v.oy, ez=Math.max(8,eye.z);      // 旋轉中心 = 眼睛：pivot 放在眼睛位置、content 反向位移，等於繞著眼睛轉
+    pivot.position.set(ex,ey,ez); content.position.set(-ex,-ey,-ez); }
   const lk = game ? 0 : cfg.look;
   pivot.rotation.x += (-rad(clampN(pose.pitch,-35,35))*lk - pivot.rotation.x)*.25;
   pivot.rotation.y += ( rad(clampN(pose.yaw,-40,40))*lk - pivot.rotation.y)*.25;
   pivot.rotation.z += ( rad(clampN(pose.roll,-25,25))*lk*.6 - pivot.rotation.z)*.25;
-  gameUpdate(now, dt); fireReq = false;
+  gazeCalStep(now); gameUpdate(now, dt); fireReq = false;
   applyCamera();
   renderer.render(scene, cam);
   fpsN++; if (now-fpsT>1000){ fps=fpsN; fpsN=0; fpsT=now; $('fps').textContent=fps; }
